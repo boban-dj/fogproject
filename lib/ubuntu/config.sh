@@ -16,21 +16,54 @@
 #   You should have received a copy of the GNU General Public License
 #   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-if [[ $linuxReleaseName == +(*[Bb][Uu][Nn][Tt][Uu]*) ]]; then
-    if [[ $OSVersion -ge 16  && -z $php_ver ]]; then
-        php_ver='7.0'
-        php_verAdds='-7.0'
-    fi
-fi
+[[ -z $repo ]] && repo="php"
 [[ -z $php_ver ]] && php_ver=5
 [[ -z $php_verAdds ]] && php_verAdds="-5.6"
-[[ $php_ver != 5 ]] && repo="php" || repo="php${php_ver}${php_verAdds}"
-[[ $php_ver != 5 ]] && phpcmd="php" || phpcmd="php5"
-[[ $php_ver != 5 ]] && phpfpm="php${php_ver}-fpm" || phpfpm="php5-fpm"
+if [[ $linuxReleaseName == +(*[Bb][Uu][Nn][Tt][Uu]*) ]]; then
+    if [[ -z $php_ver || $php_ver == 5 || $php_ver == '5.6' ]]; then
+        if [[ $autoaccept != yes ]]; then
+            echo " *** Detected a potential need to reinstall apache and php files."
+            echo " *** This will remove the /etc/php* and /etc/apache2* directories"
+            echo " ***  and remove/purge the apache and php files from this system."
+            echo " *** If you're okay with this please type Y, anything else will"
+            echo " ***  break the installation and you will have to remove the files yourself"
+            echo -n " ***  and make proper changes as necessary. (Y/N): "
+            read dummy
+        else
+            dummy="y"
+        fi
+        case $dummy in
+            [Yy])
+                dots "Removing apache and php files"
+                rm -rf /etc/php* /etc/apache2*
+                echo "Done"
+                dots "Stopping web services"
+                [[ $systemctl == yes ]] && systemctl stop apache2 >/dev/null 2>&1 || service apache2 stop >/dev/null 2>&1
+                [[ ! $? -eq 0 ]] && echo "Failed" || echo "Done"
+                dots "Removing the apache and php packages"
+                DEBIAN_FRONTEND=noninteractive apt-get purge -yq 'apache2*' 'php5*' 'php7*' 'libapache*' >/dev/null 2>&1
+                [[ ! $? -eq 0 ]] && echo "Failed" || echo "Done"
+                dots "Resetting our variables to specify php version 7.1"
+                php_ver="7.1"
+                php_verAdds="-7.1"
+                phpfpm="php${php_ver}-fpm"
+                phpldap="php${php_ver}-ldap"
+                phpcmd="php"
+                packages="apache2 build-essential cpp curl g++ gawk gcc gzip htmldoc isc-dhcp-server lftp libapache2-mod-fastcgi libapache2-mod-php${php_ver} libc6 libcurl3 m4 mysql-client mysql-server net-tools nfs-kernel-server openssh-server $phpfpm php-gettext php${php_ver} php${php_ver}-cli php${php_ver}-curl php${php_ver}-gd php${php_ver}-json $phpldap php${php_ver}-mcrypt php${php_ver}-mysql php${php_ver}-mysqlnd sysv-rc-conf tar tftpd-hpa tftp-hpa vsftpd wget xinetd zlib1g"
+                apt-get clean -yq >/dev/null 2>&1
+                echo "Done"
+                ;;
+        esac
+    fi
+fi
+if [[ -z $phpcmd ]]; then
+    [[ $php_ver != 5 ]] && phpcmd="php" || phpcmd="php5"
+    [[ -z $phpfpm ]] && phpfpm="php${php_ver}-fpm" || phpfpm="php5-fpm"
+fi
 [[ -z $packageQuery ]] && packageQuery="dpkg -l \$x | grep '^ii'"
 case $linuxReleaseName in
     *[Dd][Ee][Bb][Ii][Aa][Nn]*|*[Bb][Uu][Nn][Tt][Uu]*)
-        [[ -z $packages ]] && packages="apache2 build-essential cpp curl g++ gawk gcc gzip htmldoc isc-dhcp-server lftp libapache2-mod-fastcgi libapache2-mod-php${php_ver} libc6 libcurl3 m4 mysql-client mysql-server net-tools nfs-kernel-server openssh-server $phpfpm php-gettext php${php_ver} php${php_ver}-cli php${php_ver}-curl php${php_ver}-gd php${php_ver}-json php${php_ver}-ldap php${php_ver}-mcrypt php${php_ver}-mysqlnd sysv-rc-conf tar tftpd-hpa tftp-hpa vsftpd wget xinetd zlib1g"
+        [[ -z $packages ]] && packages="apache2 build-essential cpp curl g++ gawk gcc gzip htmldoc isc-dhcp-server lftp libapache2-mod-fastcgi libapache2-mod-php${php_ver} libc6 libcurl3 m4 mysql-client mysql-server net-tools nfs-kernel-server openssh-server $phpfpm php-gettext php${php_ver} php${php_ver}-cli php${php_ver}-curl php${php_ver}-gd php${php_ver}-json $phpldap php${php_ver}-mcrypt php${php_ver}-mysql php${php_ver}-mysqlnd sysv-rc-conf tar tftpd-hpa tftp-hpa vsftpd wget xinetd zlib1g"
         [[ -z $packageinstaller ]] && packageinstaller="apt-get -yq install -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
         [[ -z $packagelist ]] && packagelist="apt-cache pkgnames | grep"
         [[ -z $packageupdater ]] && packageupdater="apt-get -yq upgrade -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
@@ -41,25 +74,6 @@ case $linuxReleaseName in
 esac
 [[ $php_ver != 5 ]] && packages="$packages php${php_ver}-mbstring"
 [[ -z $langPackages ]] && langPackages="language-pack-it language-pack-en language-pack-es language-pack-zh-hans"
-if [[ $systemctl == yes ]]; then
-    if [[ -e /lib/systemd/system/mariadb.service ]]; then
-        ln -s /lib/systemd/system/mariadb.service /lib/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /lib/systemd/system/mariadb.service /lib/systemd/system/mysqld.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /lib/systemd/system/mariadb.service /etc/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /lib/systemd/system/mariadb.service /etc/systemd/system/mysqld.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    elif [[ -e /lib/systemd/system/mysqld.service ]]; then
-        ln -s /lib/systemd/system/mysqld.service /usr/lib/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /lib/systemd/system/mysqld.service /etc/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    fi
-else
-    initdpath="/etc/init.d"
-    initdsrc="../packages/init.d/ubuntu"
-    initdMCfullname="FOGMulticastManager"
-    initdIRfullname="FOGImageReplicator"
-    initdSDfullname="FOGScheduler"
-    initdSRfullname="FOGSnapinReplicator"
-    initdPHfullname="FOGPingHosts"
-fi
 if [[ -z $webdirdest ]]; then
     if [[ -z $docroot ]]; then
         docroot="/var/www/html/"

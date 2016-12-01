@@ -229,6 +229,30 @@ class FOGPageManager extends FOGBase
                 )
             );
         }
+        /**
+         * As a new method is being called, ensure the
+         * alternate methods are clean of their constructed
+         * data of header, attributes, data, and templates.
+         */
+        $nonresetmethods = array(
+            'index',
+            'search',
+            'active',
+            'pending',
+        );
+        $test = str_replace('Post', '', $method);
+        $methodTest = preg_grep("#$test#i", $nonresetmethods);
+        global $node;
+        if ($node !== 'plugin'
+            && count($methodTest) < 1
+        ) {
+            unset(
+                $class->headerData,
+                $class->data,
+                $class->templates,
+                $class->attributes
+            );
+        }
         $class->$method();
         $this->resetRequest();
     }
@@ -304,6 +328,11 @@ class FOGPageManager extends FOGBase
             RegexIterator::GET_MATCH
         );
         $files = iterator_to_array($RegexIterator, false);
+        unset(
+            $RecursiveDirectoryIterator,
+            $RecursiveIteratorIterator,
+            $RegexIterator
+        );
         $plugins = '?!';
         $normalfiles = array_values(
             array_filter(

@@ -21,7 +21,7 @@
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
  * @link     https://fogproject.org
  */
-class PushbulletHandler
+class PushbulletHandler extends Pushbullet
 {
     private $_apiKey;
     private $_curlCallback;
@@ -150,9 +150,9 @@ class PushbulletHandler
     /**
      * Push a checklist.
      *
-     * @param string   $recipient The recipient.
-     * @param string   $title     The list's title.
-     * @param string[] $items     The list items.
+     * @param string $recipient The recipient.
+     * @param string $title     The list's title.
+     * @param array  $items     The list items.
      *
      * @return object Response.
      * @throws PushbulletException
@@ -621,8 +621,7 @@ class PushbulletHandler
         $sendAsJSON = false,
         $auth = true
     ) {
-        $Requests = new FOGURLRequests();
-        $data = $Requests->process(
+        $data = self::$FOGURLRequests->process(
             $url,
             $method,
             $data,

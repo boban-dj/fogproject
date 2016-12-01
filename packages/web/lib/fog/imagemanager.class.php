@@ -22,6 +22,121 @@
 class ImageManager extends FOGManagerController
 {
     /**
+     * The base table name.
+     *
+     * @var string
+     */
+    public $tablename = 'images';
+    /**
+     * Install our table.
+     *
+     * @return bool
+     */
+    public function install()
+    {
+        $this->uninstall();
+        $compress = sprintf(
+            "ENUM('%s')",
+            implode("','", range(0, 9))
+        );
+        $sql = Schema::createTable(
+            $this->tablename,
+            true,
+            array(
+                'imageID',
+                'imageName',
+                'imageDesc',
+                'imagePath',
+                'imageProtect',
+                'imageMagnetUri',
+                'imageDateTime',
+                'imageCreateBy',
+                'imageBuilding',
+                'imageSize',
+                'imageTypeID',
+                'imagePartitionTypeID',
+                'imageOSID',
+                'imageFormat',
+                'imageLastDeploy',
+                'imageCompress',
+                'imageEnabled',
+                'imageReplicate'
+            ),
+            array(
+                'INTEGER',
+                'VARCHAR(40)',
+                'LONGTEXT',
+                'LONGTEXT',
+                "ENUM('0', '1')",
+                'LONGTEXT',
+                'TIMESTAMP',
+                'VARCHAR(40)',
+                'INTEGER',
+                'VARCHAR(255)',
+                'INTEGER',
+                'INTEGER',
+                'INTEGER',
+                'VARCHAR(2)',
+                'DATETIME',
+                $compress,
+                "ENUM('0', '1')",
+                "ENUM('0', '1')"
+            ),
+            array(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            ),
+            array(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                'CURRENT_TIMESTAMP',
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            ),
+            array(
+                'imageID',
+                array(
+                    'imageName',
+                    'imageTypeID'
+                )
+            ),
+            'MyISAM',
+            'utf8',
+            'imageID',
+            'imageID'
+        );
+        return self::$DB->query($sql);
+    }
+    /**
      * Removes fields.
      *
      * Customized for hosts

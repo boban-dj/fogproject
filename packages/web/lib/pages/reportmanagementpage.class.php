@@ -7,7 +7,24 @@ class ReportManagementPage extends FOGPage
         $regext = '#^.+/reports/.*\.report\.php$#';
         $dirpath = $_SESSION['FOG_REPORT_DIR'];
         $strlen = -strlen('.report.php');
-        $files = iterator_to_array(self::getClass('RegexIterator', self::getClass('RecursiveIteratorIterator', self::getClass('RecursiveDirectoryIterator', $dirpath, FileSystemIterator::SKIP_DOTS)), $regext, RegexIterator::GET_MATCH), false);
+        $RecursiveDirectoryIterator = new RecursiveDirectoryIterator(
+            $dirpath,
+            FileSystemIterator::SKIP_DOTS
+        );
+        $RecursiveIteratorIterator = new RecursiveIteratorIterator(
+            $RecursiveDirectoryIterator
+        );
+        $RegexIterator = new RegexIterator(
+            $RecursiveIteratorIterator,
+            $regext,
+            RegexIterator::GET_MATCH
+        );
+        $files = iterator_to_array($RegexIterator, false);
+        unset(
+            $RecursiveDirectoryIterator,
+            $RecursiveIteratorIterator,
+            $RegexIterator
+        );
         $getNiceNameReports = function ($element) use ($strlen) {
             return str_replace('_', ' ', substr(basename($element[0]), 0, $strlen));
         };
@@ -206,7 +223,7 @@ class ReportManagementPage extends FOGPage
             $start = self::niceDate($start);
             $end = self::niceDate($end);
             if ($start < $date1
-                && $end > $date2
+                || $start > $date2
             ) {
                 continue;
             }
@@ -648,7 +665,7 @@ class ReportManagementPage extends FOGPage
             if (!$Virus->isValid()) {
                 continue;
             }
-            $Host = self::getClass('HostManager')->getHostByMacAddresses($Virus->get('hostMAC'));
+            $Host = self::getClass('HostManager')->getHostByMacAddresses($Virus->get('mac'));
             if (!$Host->isValid()) {
                 continue;
             }
@@ -1130,7 +1147,7 @@ class ReportManagementPage extends FOGPage
                 continue;
             }
             if ($start < $date1
-                || $end > $date2
+                || $start > $date2
             ) {
                 continue;
             }
@@ -1229,7 +1246,7 @@ class ReportManagementPage extends FOGPage
         }
         $this->title = _('FOG Equipment Loan Form');
         printf(
-            '<h2><a href="export.php?type=pdf&filename=%sEquipmentLoanForm" alt="%s" title="%s" target="_blank">%s</a></h2>',
+            '<h2><div id="exportDiv"></div><a id="pdfsub" href="export.php?type=pdf&filename=%sEquipmentLoanForm" alt="%s" title="%s" target="_blank">%s</a></h2>',
             $Inventory->get('primaryUser'),
             _('Export PDF'),
             _('Export PDF'),

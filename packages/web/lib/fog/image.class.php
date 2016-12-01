@@ -79,6 +79,28 @@ class Image extends FOGController
         'imagetype',
     );
     /**
+     * Database -> Class field relationships
+     *
+     * @var array
+     */
+    protected $databaseFieldClassRelationships = array(
+        'OS' => array(
+            'id',
+            'osID',
+            'os'
+        ),
+        'ImagePartitionType' => array(
+            'id',
+            'imagePartitionTypeID',
+            'imagepartitiontype'
+        ),
+        'ImageType' => array(
+            'id',
+            'imageTypeID',
+            'imagetype'
+        )
+    );
+    /**
      * Removes the item from the database
      *
      * @param string $key the key to remove
@@ -149,14 +171,25 @@ class Image extends FOGController
             }
             self::getClass('HostManager')
                 ->update(
-                    array(
-                        'id' => $this->get('hosts')
-                    ),
+                    array('id' => $this->get('hosts')),
                     '',
                     array('imageID' => $this->get('id'))
                 );
         }
-        return $this->assocSetter('Image', 'storagegroup');
+        $primary = self::getSubObjectIDs(
+            'ImageAssociation',
+            array(
+                'imageID' => $this->get('id'),
+                'primary' => 1
+            ),
+            'storagegroupID'
+        );
+        $this->assocSetter('Image', 'storagegroup');
+        if (count($primary) > 0) {
+            $primary = array_shift($primary);
+            $this->setPrimaryGroup($primary);
+        }
+        return $this;
     }
     /**
      * Deletes the image file
@@ -279,8 +312,8 @@ class Image extends FOGController
         );
         $groupids = array_filter($groupids);
         if (count($groupids) < 1) {
-            $groupIDs = self::getSubObjectIDs('StorageGroup');
-            $groupids = @min($groupIDs);
+            $groupids = self::getSubObjectIDs('StorageGroup');
+            $groupids = @min($groupids);
         }
         $this->set('storagegroups', $groupids);
     }
@@ -346,7 +379,6 @@ class Image extends FOGController
             if ($groupids < 1) {
                 throw new Exception(_('No viable storage groups found'));
             }
-            $this->set('storagegroups', (array)$groupids);
         }
         $primaryGroup = array();
         foreach ((array)$groupids as &$groupid) {
@@ -357,20 +389,12 @@ class Image extends FOGController
             unset($groupid);
         }
         if (count($primaryGroup) < 1) {
-            $primaryGroup = @min((array)$groupids);
+            $primaryGroup = @min((array) $groupids);
         } else {
             $primaryGroup = array_shift($primaryGroup);
         }
+
         return new StorageGroup($primaryGroup);
-    }
-    /**
-     * Loads the os object for this image
-     *
-     * @return void
-     */
-    protected function loadOs()
-    {
-        $this->set('os', new OS($this->get('osID')));
     }
     /**
      * Returns the OS object
@@ -382,18 +406,6 @@ class Image extends FOGController
         return $this->get('os');
     }
     /**
-     * Loads the image type for this image
-     *
-     * @return void
-     */
-    protected function loadImagetype()
-    {
-        $this->set(
-            'imagetype',
-            new ImageType($this->get('imageTypeID'))
-        );
-    }
-    /**
      * Returns the ImageType object
      *
      * @return object
@@ -401,22 +413,6 @@ class Image extends FOGController
     public function getImageType()
     {
         return $this->get('imagetype');
-    }
-    /**
-     * Loads the image partition type
-     *
-     * @return void
-     */
-    protected function loadImagepartitiontype()
-    {
-        $iptID = $this->get('imagePartitionTypeID');
-        if ($iptID < 1) {
-            $iptID = 1;
-        }
-        $this->set(
-            'imagepartitiontype',
-            new ImagePartitionType($iptID)
-        );
     }
     /**
      * Returns the ImagePartitionType object
@@ -470,7 +466,8 @@ class Image extends FOGController
                 'imageID' => $this->get('id')
             )
         );
-        $assocID = @min($assocID);
+        $assocID = @min((array) $assocID);
+
         return self::getClass('ImageAssociation', $assocID)->isPrimary();
     }
     /**
@@ -482,18 +479,21 @@ class Image extends FOGController
      */
     public function setPrimaryGroup($groupID)
     {
+        /**
+         * Unset all current groups to non-primary
+         */
         self::getClass('ImageAssociationManager')
             ->update(
                 array(
                     'imageID' => $this->get('id'),
-                    'storagegroupID' => array_diff(
-                        (array)$this->get('storagegroups'),
-                        (array)$groupID
-                    )
+                    'storagegroupID' => $this->get('storagegroups')
                 ),
                 '',
                 array('primary' => 0)
             );
+        /**
+         * Set the passed group as primary
+         */
         self::getClass('ImageAssociationManager')
             ->update(
                 array(

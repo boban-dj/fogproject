@@ -5,20 +5,18 @@
  * PHP version 5
  *
  * @category Group
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * Main class for group objects.
  *
  * @category Group
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 class Group extends FOGController
@@ -77,7 +75,6 @@ class Group extends FOGController
                     'groupID' => $this->get('id'),
                 )
             );
-
         return parent::destroy($field);
     }
     /**
@@ -88,7 +85,6 @@ class Group extends FOGController
     public function save()
     {
         parent::save();
-
         return $this->assocSetter('Group', 'host');
     }
     /**
@@ -115,8 +111,11 @@ class Group extends FOGController
      *
      * @return object
      */
-    public function addPrinter($printerAdd, $printerDel, $level = 0)
-    {
+    public function addPrinter(
+        $printerAdd,
+        $printerDel,
+        $level = 0
+    ) {
         self::getClass('HostManager')->update(
             array(
                 'id' => $this->get('hosts'),
@@ -277,8 +276,11 @@ class Group extends FOGController
      *
      * @return object
      */
-    public function setDisp($x, $y, $r)
-    {
+    public function setDisp(
+        $x,
+        $y,
+        $r
+    ) {
         self::getClass('HostScreenSettingsManager')
             ->destroy(
                 array(
@@ -329,9 +331,13 @@ class Group extends FOGController
                 $hostID,
                 $time,
             );
+            unset($hostID);
         }
         self::getClass('HostAutoLogoutManager')
-            ->insertBatch($insert_fields, $insert_items);
+            ->insertBatch(
+                $insert_fields,
+                $insert_items
+            );
 
         return $this;
     }
@@ -344,7 +350,11 @@ class Group extends FOGController
      */
     public function addHost($addArray)
     {
-        return $this->addRemItem('hosts', (array) $addArray, 'merge');
+        return $this->addRemItem(
+            'hosts',
+            (array)$addArray,
+            'merge'
+        );
     }
     /**
      * Remove host from the group.
@@ -355,7 +365,11 @@ class Group extends FOGController
      */
     public function removeHost($removeArray)
     {
-        return $this->addRemItem('hosts', (array) $removeArray, 'diff');
+        return $this->addRemItem(
+            'hosts',
+            (array)$removeArray,
+            'diff'
+        );
     }
     /**
      * Add image to all hosts.
@@ -716,6 +730,8 @@ class Group extends FOGController
     }
     /**
      * Perform wake on lan to all hosts in group.
+     *
+     * @return void
      */
     public function wakeOnLAN()
     {
@@ -723,21 +739,18 @@ class Group extends FOGController
             'MACAddressAssociation',
             array(
                 'hostID' => $this->get('hosts'),
-                'pending' => array(
-                    '0',
-                    0,
-                    null,
-                    '',
-                ),
+                'pending' => array(0, '')
             ),
             'mac'
         );
         $hostMACs = $this->parseMacList($hostMACs);
-        $macStr = implode(
-            '|',
-            $hostMACs
-        );
-        $this->wakeUp($hostMACs);
+        if (count($hostMACs) > 0) {
+            $macStr = implode(
+                '|',
+                $hostMACs
+            );
+            $this->wakeUp($hostMACs);
+        }
     }
     /**
      * Create snapin tasks for hosts.

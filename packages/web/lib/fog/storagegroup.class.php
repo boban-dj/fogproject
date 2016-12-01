@@ -116,17 +116,39 @@ class StorageGroup extends FOGController
      */
     protected function loadEnablednodes()
     {
-        $this->set(
-            'enablednodes',
-            self::getSubObjectIDs(
-                'StorageNode',
-                array(
-                    'storagegroupID' => $this->get('id'),
-                    'id' => $this->get('allnodes'),
-                    'isEnabled' => 1
-                )
-            )
+        global $node;
+        $find = array(
+            'storagegroupID' => $this->get('id'),
+            'id' => $this->get('allnodes'),
+            'isEnabled' => 1
         );
+        $nodes = $this->getSubObjectIDs(
+            'StorageNode',
+            $find
+        );
+        $this->set('enablednodes', $nodes);
+        return;
+        $nodeids = array();
+        $testurls = array();
+        foreach ($nodes as &$node) {
+            if (!$node->isValid()) {
+                unset($node);
+                continue;
+            }
+            if ($node->get('maxClients') < 1) {
+                unset($node);
+                continue;
+            }
+            $testurls[] = sprintf(
+                'http://%s/fog/management/index.php',
+                $node->get('ip')
+            );
+            $nodeids[] = $node->get('id');
+            unset($node);
+        }
+        $test = array_filter(self::$FOGURLRequests->isAvailable($testurls));
+        $nodeids = array_intersect_key($nodeids, $test);
+        $this->set('enablednodes', $nodeids);
     }
     /**
      * Returns total available slots
@@ -215,13 +237,14 @@ class StorageGroup extends FOGController
             'StorageNode',
             array(
                 'id' => $this->get('enablednodes'),
-                'isMaster' => 1,
-                'isEnabled' => 1
-            ),
-            'id'
+                'isMaster' => 1
+            )
         );
         $masternode = array_shift($masternode);
-        if (!$masternode > 0) {
+        if (!($masternode
+            && is_numeric($masternode)
+            && $masternode > 0)
+        ) {
             $masternode = @min($this->get('enablednodes'));
         }
         return new StorageNode($masternode);
@@ -229,11 +252,9 @@ class StorageGroup extends FOGController
     /**
      * Get's the optimal storage node
      *
-     * @param int $image the image to get optimal node of
-     *
      * @return object
      */
-    public function getOptimalStorageNode($image)
+    public function getOptimalStorageNode()
     {
         $Nodes = self::getClass('StorageNodeManager')
             ->find(
@@ -244,25 +265,17 @@ class StorageGroup extends FOGController
             if (!$Node->isValid()) {
                 continue;
             }
-            if (!in_array($image, $Node->get('images'))) {
-                continue;
-            }
             if ($Node->get('maxClients') < 1) {
                 continue;
             }
             if ($winner == null
-                || !$winner->isValid()
                 || $Node->getClientLoad() < $winner->getClientLoad()
             ) {
                 $winner = $Node;
-                continue;
             }
             unset($Node);
         }
-        if (empty($winner)
-            || !$winner instanceof StorageNode
-            || !$winner->isValid()
-        ) {
+        if (empty($winner)) {
             $winner = new StorageNode(@min($this->get('enablednodes')));
         }
         return $winner;

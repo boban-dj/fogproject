@@ -5,7 +5,7 @@
  * PHP version 5
  *
  * @category SnapinReplicator
- * @package  FOGPackage
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
  * @link     https://fogproject.org
@@ -14,7 +14,7 @@
  * Replication service for snapins
  *
  * @category SnapinReplicator
- * @package  FOGPackage
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
  * @link     https://fogproject.org
@@ -28,7 +28,7 @@ class SnapinReplicator extends FOGService
      */
     public static $sleeptime = 'SNAPINREPSLEEPTIME';
     /**
-     * Initializes the ImageReplicator Class
+     * Initializes the SnapinReplicator Class
      *
      * @return void
      */
@@ -86,7 +86,6 @@ class SnapinReplicator extends FOGService
      * This is what almost all services have available
      * but is specific to this service
      *
-     * @throws Exception
      * @return void
      */
     private function _commonOutput()
@@ -114,7 +113,7 @@ class SnapinReplicator extends FOGService
                 self::outall(
                     sprintf(
                         ' * %s.',
-                        _('Starting Image Replication')
+                        _('Starting Snapin Replication')
                     )
                 );
                 self::outall(
@@ -135,6 +134,45 @@ class SnapinReplicator extends FOGService
                         $StorageNode->get('name')
                     )
                 );
+                /**
+                 * More implicit defining of type of sync
+                 * currently happening.
+                 */
+                self::outall(
+                    sprintf(
+                        ' * %s %s -> %s %s.',
+                        _('Attempting to perform'),
+                        _('Group'),
+                        _('Group'),
+                        _('snapin replication')
+                    )
+                );
+                /**
+                 * Get the snapin ids that are valid.
+                 */
+                $SnapinIDs = self::getSubObjectIDs('Snapin');
+                /**
+                 * Find any snapins that are no longer valid within
+                 * fog, but still existing in the group assoc.
+                 */
+                $SnapinAssocs = self::getSubObjectIDs(
+                    'SnapinGroupAssociation',
+                    array('snapinID' => $SnapinIDs),
+                    'snapinID',
+                    true
+                );
+                /**
+                 * If any assocs exist from prior, remove.
+                 */
+                if (count($SnapinAssocs)) {
+                    self::getClass('SnapinGroupAssociationManager')
+                        ->destroy(array('snapinID' => $SnapinAssocs));
+                }
+                unset($SnapinAssocs);
+                /**
+                 * Get the snapin ids that are to be replicated.
+                 * NOTE: Must be enabled and have Replication enabled.
+                 */
                 $SnapinIDs = self::getSubObjectIDs(
                     'Snapin',
                     array(
@@ -142,17 +180,6 @@ class SnapinReplicator extends FOGService
                         'toReplicate' => 1
                     )
                 );
-                $SnapinAssocs = self::getSubObjectIDs(
-                    'SnapinGroupAssociation',
-                    array('snapinID' => $SnapinIDs),
-                    'snapinID',
-                    true
-                );
-                if (count($SnapinAssocs)) {
-                    self::getClass('SnapinGroupAssociationManager')
-                        ->destroy(array('snapinID' => $SnapinAssocs));
-                }
-                unset($SnapinAssocs);
                 $SnapinAssocCount = self::getClass('SnapinGroupAssociationManager')
                     ->count(
                         array(
@@ -161,8 +188,8 @@ class SnapinReplicator extends FOGService
                         )
                     );
                 $SnapinCount = self::getClass('SnapinManager')->count();
-                if ($SnapinAssocCount <= 0
-                    || $SnapinCount <= 0
+                if ($SnapinAssocCount < 1
+                    || $SnapinCount < 1
                 ) {
                     $this->outall(
                         sprintf(
@@ -200,7 +227,7 @@ class SnapinReplicator extends FOGService
                             sprintf(
                                 ' | %s: %s',
                                 _('Not syncing Snapin'),
-                                $Image->get('name')
+                                $Snapin->get('name')
                             )
                         );
                         self::outall(
@@ -219,6 +246,19 @@ class SnapinReplicator extends FOGService
                     );
                     unset($Snapin);
                 }
+                /**
+                 * More implicit defining of type of sync
+                 * currently happening.
+                 */
+                self::outall(
+                    sprintf(
+                        ' * %s %s -> %s %s.',
+                        _('Attempting to perform'),
+                        _('Group'),
+                        _('Nodes'),
+                        _('snapin replication')
+                    )
+                );
                 foreach ($Snapins as &$Snapin) {
                     $this->replicateItems(
                         $myStorageGroupID,

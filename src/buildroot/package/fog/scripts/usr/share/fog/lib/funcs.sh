@@ -452,38 +452,45 @@ shrinkPartition() {
     local part_block_size=0
     case $fstype in
         ntfs)
-            size=$(ntfsresize -f -i -P $part | grep "You might resize" | cut -d" " -f5)
-            if [[ -z $size ]]; then
-                tmpoutput=$(ntfsresize -f -i -P $part)
-                handleError " * (${FUNCNAME[0]})\n   Args Passed: $*\n\nFatal Error, Unable to determine possible ntfs size\n * To better help you debug we will run the ntfs resize\n\t but this time with full output, please wait!\n\t$tmpoutput"
+            ntfsresize -f -i -v -P $part >/tmp/tmpoutput.txt 2>&1
+            if [[ ! $? -eq 0 ]]; then
+                handleError " * (${FUNCNAME[0]})\n    Args Passed: $*\n\nFatal Error, unable to find size data out on $part. Cmd: ntfsresize -f -i -v -P $part"
             fi
+            tmpoutput=$(cat /tmp/tmpoutput.txt)
+            size=$(cat /tmp/tmpoutput.txt | grep "You might resize" | cut -d" " -f5)
+            [[ -z $size ]] && handleError " * (${FUNCNAME[0]})\n   Args Passed: $*\n\nFatal Error, Unable to determine possible ntfs size\n * To better help you debug we will run the ntfs resize\n\t but this time with full output, please wait!\n\t $(cat /tmp/tmpoutput.txt)"
+            rm /tmp/tmpoutput.txt >/dev/null 2>&1
             sizentfsresize=$((size / 1000))
             let sizentfsresize+=300000
             sizentfsresize=$((sizentfsresize * 1${percent} / 100))
             sizefd=$((sizentfsresize * 103 / 100))
             echo " * Possible resize partition size: $sizentfsresize k"
             dots "Running resize test $part"
-            tmp_success=$(ntfsresize -f -n -s ${sizentfsresize}k $part </usr/share/fog/lib/EOFNTFSRESTORE)
-            test_string=$(echo $tmp_success | egrep -o "(ended successfully|bigger than the device size|volume size is already OK)" | tr -d '[[:space:]]')
+            ntfsresize -f -n -s ${sizentfsresize}k $part </usr/share/fog/lib/EOFNTFSRESTORE >/tmp/tmpoutput.txt 2>&1
+            local ntfsstatus="$?"
+            tmpoutput=$(cat /tmp/tmpoutput.txt)
+            test_string=$(cat /tmp/tmpoutput.txt | egrep -io "(ended successfully|bigger than the device size|volume size is already OK)" | tr -d '[[:space:]]')
             echo "Done"
             debugPause
+            rm /tmp/tmpoutput.txt >/dev/null 2>&1
             case $test_string in
                 endedsuccessfully)
                     echo " * Resize test was successful"
                     do_resizefs=1
                     do_resizepart=1
+                    ntfsstatus=0
                     ;;
                 biggerthanthedevicesize)
                     echo " * Not resizing filesystem $part (part too small)"
+                    ntfsstatus=0
                     ;;
                 volumesizeisalreadyOK)
                     echo " * Not resizing filesystem $part (already OK)"
                     do_resizepart=1
-                    ;;
-                *)
-                    handleError "Resize test failed!\n $tmp_success (${FUNCNAME[0]})\n   Args Passed: $*"
+                    ntfsstatus=0
                     ;;
             esac
+            [[ ! $ntfsstatus -eq 0 ]] && handleError "Resize test failed!\n    $tmpoutput\n    (${FUNCNAME[0]})\n    Args Passed: $*"
             if [[ $do_resizefs -eq 1 ]]; then
                 debugPause
                 dots "Resizing filesystem"

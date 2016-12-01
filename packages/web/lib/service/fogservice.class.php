@@ -67,8 +67,12 @@ abstract class FOGService extends FOGBase
      *
      * @return bool
      */
-    private static function _filesAreEqual($size_a, $size_b, $file_a, $file_b)
-    {
+    private static function _filesAreEqual(
+        $size_a,
+        $size_b,
+        $file_a,
+        $file_b
+    ) {
         if ($size_a != $size_b) {
             return false;
         }
@@ -82,9 +86,13 @@ abstract class FOGService extends FOGBase
     public function __construct()
     {
         parent::__construct();
+        $logpath = trim(trim(self::getSetting('SERVICE_LOG_PATH'), '/'));
+        if (!$logpath) {
+            $logpath = 'opt/fog/log';
+        }
         self::$logpath = sprintf(
             '/%s/',
-            trim(self::getSetting('SERVICE_LOG_PATH'), '/')
+            $logpath
         );
     }
     /**
@@ -141,16 +149,14 @@ abstract class FOGService extends FOGBase
         self::getIPAddress();
         if (!count(self::$ips)) {
             self::outall(
-                _('Interface not ready, waiting.'),
-                static::$dev
+                _('Interface not ready, waiting.')
             );
             sleep(10);
             $this->waitInterfaceReady();
         }
         foreach (self::$ips as &$ip) {
             self::outall(
-                _("Interface Ready with IP Address: $ip"),
-                static::$dev
+                _("Interface Ready with IP Address: $ip")
             );
             unset($ip);
         }
@@ -162,7 +168,7 @@ abstract class FOGService extends FOGBase
      */
     public function waitDbReady()
     {
-        if (!self::$DB->link()->connect_errno) {
+        if (self::$DB->getLink()) {
             return;
         }
         self::outall(
@@ -170,8 +176,7 @@ abstract class FOGService extends FOGBase
                 'FOGService: %s - %s',
                 get_class($this),
                 _('Waiting for mysql to be available')
-            ),
-            static::$dev
+            )
         );
         sleep(10);
         $this->waitDbReady();
@@ -185,24 +190,25 @@ abstract class FOGService extends FOGBase
     {
         ob_start();
         echo "\n";
-        echo "        ___           ___           ___      \n";
-        echo "       /\  \         /\  \         /\  \     \n";
-        echo "      /::\  \       /::\  \       /::\  \    \n";
-        echo "     /:/\:\  \     /:/\:\  \     /:/\:\  \   \n";
-        echo "    /::\-\:\  \   /:/  \:\  \   /:/  \:\  \  \n";
-        echo "   /:/\:\ \:\__\ /:/__/ \:\__\ /:/__/_\:\__\ \n";
-        echo "   \/__\:\ \/__/ \:\  \ /:/  / \:\  /\ \/__/ \n";
-        echo "        \:\__\    \:\  /:/  /   \:\ \:\__\   \n";
-        echo "         \/__/     \:\/:/  /     \:\/:/  /   \n";
-        echo "                    \::/  /       \::/  /    \n";
-        echo "                     \/__/         \/__/     \n";
+        echo "     ___           ___           ___     \n";
+        echo "    /\  \         /\  \         /\  \    \n";
+        echo "   /::\  \       /::\  \       /::\  \   \n";
+        echo "  /:/\:\  \     /:/\:\  \     /:/\:\  \  \n";
+        echo " /::\-\:\  \   /:/  \:\  \   /:/  \:\  \ \n";
+        echo '/:/\:\ \:\__\ /:/__/ \:\__\ /:/__/_\:\__\\';
         echo "\n";
-        echo "  ###########################################\n";
-        echo "  #     Free Computer Imaging Solution      #\n";
-        echo "  #     Credits:                            #\n";
-        echo "  #     http://fogproject.org/credits       #\n";
-        echo "  #     GNU GPL Version 3                   #\n";
-        echo "  ###########################################\n";
+        echo "\/__\:\ \/__/ \:\  \ /:/  / \:\  /\ \/__/\n";
+        echo "     \:\__\    \:\  /:/  /   \:\ \:\__\  \n";
+        echo "      \/__/     \:\/:/  /     \:\/:/  /  \n";
+        echo "                 \::/  /       \::/  /   \n";
+        echo "                  \/__/         \/__/    \n";
+        echo "\n";
+        echo "#########################################\n";
+        echo "#     Free Computer Imaging Solution    #\n";
+        echo "#     Credits:                          #\n";
+        echo "#     http://fogproject.org/credits     #\n";
+        echo "#     GNU GPL Version 3                 #\n";
+        echo "#########################################\n";
         self::outall(ob_get_clean());
     }
     /**
@@ -258,6 +264,9 @@ abstract class FOGService extends FOGBase
         if (file_exists($path)) {
             $filesize = (double)self::getFilesize($path);
             $max_size = (double)self::getSetting('SERVICE_LOG_SIZE');
+            if (!$max_size) {
+                $max_size = 500000;
+            }
             if ($filesize >= $max_size) {
                 unlink($path);
             }
@@ -313,6 +322,7 @@ abstract class FOGService extends FOGBase
      */
     public function serviceRun()
     {
+        $this->waitDbReady();
         $tmpTime = self::getSetting(static::$sleeptime);
         if (static::$zzz != $tmpTime) {
             static::$zzz = $tmpTime;
@@ -373,27 +383,65 @@ abstract class FOGService extends FOGBase
         }
         $StorageNode = self::getClass('StorageNode', $myStorageNodeID);
         if (!$StorageNode->isValid() || !$StorageNode->get('isMaster')) {
-            throw new Exception(_(' * I am not the master'));
+            throw new Exception(
+                sprintf(
+                    ' * %s',
+                    _('I am not the master for this group')
+                )
+            );
         }
         $objType = get_class($Obj);
         $groupOrNodeCount = self::getClass('StorageNodeManager')
             ->count($findWhere);
-        $countTest = ($master ? 1 : 0);
-        if ($groupOrNodeCount <= 1 && $countTest) {
-            self::outall(_(" * Not syncing $objType between $itemType(s)"));
-            self::outall(_(" | $objType Name: {$Obj->get(name)}"));
-            self::outall(_(' | I am the only member'));
-        } else {
+        $counttest = 2;
+        if (!$master) {
+            $groupOrNodeCount--;
+            $counttest = 1;
+        }
+        if ($groupOrNodeCount < $counttest) {
             self::outall(
                 sprintf(
-                    " * Found $objType to transfer to %s %s(s)",
-                    $groupOrNodeCount,
-                    $itemType
+                    ' * %s %s %s %s',
+                    _('Not syncing'),
+                    $objType,
+                    _('between'),
+                    _("{$itemType}s")
                 )
             );
             self::outall(
                 sprintf(
-                    " | $objType name: %s",
+                    ' | %s %s: %s',
+                    $objType,
+                    _('Name'),
+                    $Obj->get('name')
+                )
+            );
+            self::outall(
+                sprintf(
+                    ' | %s.',
+                    _('There are no other members to sync to')
+                )
+            );
+        } else {
+            self::outall(
+                sprintf(
+                    ' * %s %s %s %s %s',
+                    _('Found'),
+                    _($objType),
+                    _('to transfer to'),
+                    $groupOrNodeCount,
+                    (
+                        $groupOrNodeCount != 1 ?
+                        _("{$itemType}s") :
+                        _($itemType)
+                    )
+                )
+            );
+            self::outall(
+                sprintf(
+                    ' | %s %s: %s',
+                    _($objType),
+                    _('Name'),
                     $Obj->get('name')
                 )
             );
@@ -430,44 +478,77 @@ abstract class FOGService extends FOGBase
                     continue;
                 }
                 $groupID = $PotentialStorageNode->get('storagegroupID');
-                if ($master && $groupID == $myStorageGroupID) {
+                if ($master
+                    && $groupID == $myStorageGroupID
+                ) {
                     continue;
                 }
-                $isRunning = $this->isRunning(
-                    $this->procRef[$itemType][$Obj->get('name')][$i]
-                );
-                if ($isRunning) {
-                    self::outall(_(' | Replication not complete'));
+                if (isset($this->procRef[$itemType])
+                    && isset($this->procRef[$itemType][$Obj->get('name')])
+                    && isset($this->procRef[$itemType][$Obj->get('name')][$i])
+                ) {
+                    $isRunning = $this->isRunning(
+                        $this->procRef[$itemType][$Obj->get('name')][$i]
+                    );
+                    if ($isRunning) {
+                        self::outall(
+                            sprintf(
+                                '| %s: %d',
+                                _('Replication already running with PID'),
+                                $this->getPID(
+                                    $this->procRef[$itemType][$Obj->get('name')][$i]
+                                )
+                            )
+                        );
+                        continue;
+                    }
+                }
+                if (!file_exists($myAdd)
+                    || !is_readable($myAdd)
+                ) {
                     self::outall(
                         sprintf(
-                            _(' | PID: %d'),
-                            $this->getPID(
-                                $this->procRef[$itemType][$Obj->get('name')][$i]
-                            )
+                            ' * %s %s %s %s',
+                            _('Not syncing'),
+                            $objType,
+                            _('between'),
+                            _("{$itemType}s")
+                        )
+                    );
+                    self::outall(
+                        sprintf(
+                            ' | %s %s: %s',
+                            _($objType),
+                            _('Name'),
+                            $Obj->get('name')
+                        )
+                    );
+                    self::outall(
+                        sprintf(
+                            ' | %s.',
+                            _('File or path cannot be reached')
                         )
                     );
                     continue;
                 }
-                if (!file_exists("$myAdd")) {
-                    self::outall(
-                        _(" * Not syncing $objType between $itemType(s)")
-                    );
-                    self::outall(
-                        _(" | $objType Name: {$Obj->get(name)}")
-                    );
-                    self::outall(
-                        _(" | File or path cannot be reached")
-                    );
-                    continue;
-                }
                 self::$FOGFTP
-                    ->set('username', $PotentialStorageNode->get('user'))
-                    ->set('password', $PotentialStorageNode->get('pass'))
-                    ->set('host', $PotentialStorageNode->get('ip'));
+                    ->set(
+                        'username',
+                        $PotentialStorageNode->get('user')
+                    )->set(
+                        'password',
+                        $PotentialStorageNode->get('pass')
+                    )->set(
+                        'host',
+                        $PotentialStorageNode->get('ip')
+                    );
                 if (!self::$FOGFTP->connect()) {
                     self::outall(
-                        _(" * Cannot connect to ")
-                        . _("{$PotentialStorageNode->get(name)}")
+                        sprintf(
+                            ' * %s %s',
+                            _('Cannot connect to'),
+                            $PotentialStorageNode->get('name')
+                        )
                     );
                     continue;
                 }
@@ -484,7 +565,9 @@ abstract class FOGService extends FOGBase
                     )
                 );
                 $removeFile = $myFile;
-                $limitmain = $this->byteconvert($StorageNode->get('bandwidth'));
+                $limitmain = $this->byteconvert(
+                    $StorageNode->get('bandwidth')
+                );
                 $limitsend = $this->byteconvert(
                     $PotentialStorageNode->get('bandwidth')
                 );
@@ -535,14 +618,10 @@ abstract class FOGService extends FOGBase
                     if (false === $index) {
                         continue;
                     }
-                    self::outall(" | Local File: $localfile");
-                    self::outall(" | Remote File: {$remotefilescheck[$index]}");
                     $filesize_main = self::getFilesize($localfile);
                     $filesize_rem = self::$FOGFTP->size(
                         $remotefilescheck[$index]
                     );
-                    self::outall(" | Local File size: $filesize_main");
-                    self::outall(" | Remote File size: $filesize_rem");
                     $filesEqual = self::_filesAreEqual(
                         $filesize_main,
                         $filesize_rem,
@@ -550,15 +629,32 @@ abstract class FOGService extends FOGBase
                         $ftpstart.$remotefilescheck[$index]
                     );
                     if (!$filesEqual) {
-                        self::outall(" | Files do not match");
                         self::outall(
-                            " * Deleting remote file: "
-                            . "{$remotefilescheck[$index]}"
+                            sprintf(
+                                ' | %s.',
+                                _('Files do not match')
+                            )
+                        );
+                        self::outall(
+                            sprintf(
+                                '* %s: %s',
+                                _('Deleting remote file'),
+                                $remotefilescheck[$index]
+                            )
                         );
                         self::$FOGFTP->delete($remotefilescheck[$index]);
                         $test = false;
                     } else {
-                        self::outall(" | Files match");
+                        self::outall(
+                            sprintf(
+                                ' | %s: %s %s %s %s',
+                                $Obj->get('name'),
+                                _('No need to sync'),
+                                basename($localfile),
+                                _('file to'),
+                                $nodename
+                            )
+                        );
                         if ($test !== false) {
                             $test = true;
                         }
@@ -575,9 +671,18 @@ abstract class FOGService extends FOGBase
                     $nodename
                 );
                 if (!$i) {
-                    self::outall(_(' * Starting Sync Actions'));
+                    self::outall(
+                        sprintf(
+                            ' * %s',
+                            _('Starting Sync Actions')
+                        )
+                    );
                 }
-                $this->killTasking($i, $itemType, $Obj->get('name'));
+                $this->killTasking(
+                    $i,
+                    $itemType,
+                    $Obj->get('name')
+                );
                 $myAddItem = escapeshellarg($myAddItem);
                 $remItem = escapeshellarg($remItem);
                 $cmd = "lftp -e 'set ftp:list-options -a;set net:max-retries ";

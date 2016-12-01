@@ -5,7 +5,7 @@
  * PHP version 5
  *
  * @category ImageReplicator
- * @package  FOGPackage
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
  * @link     https://fogproject.org
@@ -14,7 +14,7 @@
  * Replication service for images
  *
  * @category ImageReplicator
- * @package  FOGPackage
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
  * @link     https://fogproject.org
@@ -86,7 +86,6 @@ class ImageReplicator extends FOGService
      * This is what almost all services have available
      * but is specific to this service
      *
-     * @throws Exception
      * @return void
      */
     private function _commonOutput()
@@ -135,6 +134,45 @@ class ImageReplicator extends FOGService
                         $StorageNode->get('name')
                     )
                 );
+                /**
+                 * More implicit defining of type of sync
+                 * currently happening.
+                 */
+                self::outall(
+                    sprintf(
+                        ' * %s %s -> %s %s.',
+                        _('Attempting to perform'),
+                        _('Group'),
+                        _('Group'),
+                        _('image replication')
+                    )
+                );
+                /**
+                 * Get the image ids that are valid.
+                 */
+                $ImageIDs = self::getSubObjectIDs('Image');
+                /**
+                 * Find any images that are no longer valid within
+                 * fog, but still existing in the group assoc.
+                 */
+                $ImageAssocs = self::getSubObjectIDs(
+                    'ImageAssociation',
+                    array('imageID' => $ImageIDs),
+                    'imageID',
+                    true
+                );
+                /**
+                 * If any assocs exist from prior, remove
+                 */
+                if (count($ImageAssocs)) {
+                    self::getClass('ImageAssociationManager')
+                        ->destroy(array('imageID' => $ImageAssocs));
+                }
+                unset($ImageAssocs);
+                /**
+                 * Get the image ids that are to be replicated.
+                 * NOTE: Must be enabled and have Replication enabled.
+                 */
                 $ImageIDs = self::getSubObjectIDs(
                     'Image',
                     array(
@@ -142,17 +180,6 @@ class ImageReplicator extends FOGService
                         'toReplicate'=>1
                     )
                 );
-                $ImageAssocs = self::getSubObjectIDs(
-                    'ImageAssociation',
-                    array('imageID' => $ImageIDs),
-                    'imageID',
-                    true
-                );
-                if (count($ImageAssocs)) {
-                    self::getClass('ImageAssociationManager')
-                        ->destroy(array('imageID' => $ImageAssocs));
-                }
-                unset($ImageAssocs);
                 $ImageAssocCount = self::getClass('ImageAssociationManager')
                     ->count(
                         array(
@@ -219,6 +246,19 @@ class ImageReplicator extends FOGService
                     );
                     unset($Image);
                 }
+                /**
+                 * More implicit defining of type of sync
+                 * currently happening.
+                 */
+                self::outall(
+                    sprintf(
+                        ' * %s %s -> %s %s.',
+                        _('Attempting to perform'),
+                        _('Group'),
+                        _('Nodes'),
+                        _('image replication')
+                    )
+                );
                 foreach ($Images as &$Image) {
                     $this->replicateItems(
                         $myStorageGroupID,

@@ -5,20 +5,18 @@
  * PHP version 5
  *
  * @category Plugin
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * Plugin class.
  *
  * @category Plugin
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 class Plugin extends FOGController
@@ -134,6 +132,8 @@ class Plugin extends FOGController
     }
     /**
      * Sets/gets the active plugins.
+     *
+     * @return void
      */
     private function _getActivePlugs()
     {
@@ -174,6 +174,11 @@ class Plugin extends FOGController
             RegexIterator::GET_MATCH
         );
         $files = iterator_to_array($RegexIterator, false);
+        unset(
+            $RecursiveDirectoryIterator,
+            $RecursiveIteratorIterator,
+            $RegexIterator
+        );
         $files = array_map($patternReplacer, (array) $files);
         natcasesort($files);
         $files = array_filter($files);

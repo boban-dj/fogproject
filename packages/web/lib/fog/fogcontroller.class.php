@@ -8,10 +8,9 @@
  * Generates the SQL Statements more specifically.
  *
  * @category FOGController
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
@@ -21,10 +20,9 @@
  * Generates the SQL Statements more specifically.
  *
  * @category FOGController
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 abstract class FOGController extends FOGBase
@@ -104,7 +102,7 @@ abstract class FOGController extends FOGBase
      *
      * @var string
      */
-    protected $insertQueryTemplate = 'INSERT INTO `%s` (%s) VALUES (%s) ON DUPLICATE KEY UPDATE %s';
+    protected $insertQueryTemplate = 'INSERT INTO `%s` (%s) VALUES (%s) %s %s';
     /**
      * The delete query template to use.
      *
@@ -467,25 +465,25 @@ abstract class FOGController extends FOGBase
                 $paramInsert = sprintf(':%s_insert', $column);
                 $val = $this->get($key);
                 switch ($key) {
-                    case 'createdBy':
-                        if (!$val) {
-                            if (isset($_SESSION['FOG_USERNAME'])) {
-                                $val = trim($_SESSION['FOG_USERNAME']);
-                            } else {
-                                $val = 'fog';
-                            }
+                case 'createdBy':
+                    if (!$val) {
+                        if (isset($_SESSION['FOG_USERNAME'])) {
+                            $val = trim($_SESSION['FOG_USERNAME']);
+                        } else {
+                            $val = 'fog';
                         }
-                        break;
-                    case 'createdTime':
-                        if (!($val && $this->validDate($val))) {
-                            $val = $this->formatTime('now', 'Y-m-d H:i:s');
-                        }
-                        break;
-                    case 'id':
-                        if (!(is_numeric($val) && $val > 0)) {
-                            continue 2;
-                        }
-                        break;
+                    }
+                    break;
+                case 'createdTime':
+                    if (!($val && $this->validDate($val))) {
+                        $val = $this->formatTime('now', 'Y-m-d H:i:s');
+                    }
+                    break;
+                case 'id':
+                    if (!(is_numeric($val) && $val > 0)) {
+                        continue 2;
+                    }
+                    break;
                 }
                 if (is_null($val)) {
                     $val = '';
@@ -510,6 +508,7 @@ abstract class FOGController extends FOGBase
                 $this->databaseTable,
                 implode(',', (array) $insertKeys),
                 implode(',', (array) $insertValKeys),
+                'ON DUPLICATE KEY UPDATE',
                 implode(',', (array) $updateData)
             );
             $queryArray = array_combine(
@@ -547,7 +546,7 @@ abstract class FOGController extends FOGBase
                         _('has been successfully updated')
                     );
                 }
-                $this->log($msg);
+                $this->logHistory($msg);
             }
         } catch (Exception $e) {
             if (!$this instanceof History) {
@@ -574,7 +573,7 @@ abstract class FOGController extends FOGBase
                         $e->getMessage()
                     );
                 }
-                $this->log($msg);
+                $this->logHistory($msg);
             }
             $msg = sprintf(
                 '%s: %s: %s, %s: %s',
@@ -623,27 +622,13 @@ abstract class FOGController extends FOGBase
                     )
                 );
             }
-            list($join, $where) = $this->buildQuery();
+            $join = $whereArrayAnd = array();
+            $c = null;
+            $this->buildQuery($join, $whereArrayAnd, $c);
+            $join = array_filter((array) $join);
+            $join = implode((array) $join);
             $fields = array();
-            /**
-             * Lambda to get the fields to use.
-             *
-             * @param string $k      the key (for class relations really)
-             * @param string $column the column name
-             */
-            $getFields = function (&$column, $k) use (&$fields, &$table) {
-                $column = trim($column);
-                $fields[] = sprintf('`%s`.`%s`', $table, $column);
-                unset($column, $k);
-            };
-            $table = $this->databaseTable;
-            array_walk($this->databaseFields, $getFields);
-            foreach ($this->databaseFieldClassRelationships as $class => &$arr) {
-                $class = self::getClass($class);
-                $table = $class->databaseTable;
-                array_walk($class->databaseFields, $getFields);
-                unset($arr);
-            }
+            $this->getcolumns($fields);
             $key = $this->key($key);
             $paramKey = sprintf(':%s', $key);
             $query = sprintf(
@@ -653,7 +638,14 @@ abstract class FOGController extends FOGBase
                 $join,
                 $this->databaseFields[$key],
                 $paramKey,
-                count($where) ? sprintf(' AND %s', implode(' AND ', $where)) : ''
+                (
+                    count($whereArrayAnd) ?
+                    sprintf(
+                        ' AND %s',
+                        implode(' AND ', $whereArrayAnd)
+                    ) :
+                    ''
+                )
             );
             $msg = sprintf(
                 '%s %s',
@@ -683,6 +675,34 @@ abstract class FOGController extends FOGBase
         }
 
         return $this;
+    }
+    /**
+     * Gets the columns.
+     *
+     * @param array $fields The fields to get.
+     *
+     * @return void
+     */
+    public function getcolumns(&$fields)
+    {
+        /**
+         * Lambda to get the fields to use.
+         *
+         * @param string $k      The key (for class relations).
+         * @param string $column The column name.
+         */
+        $getFields = function (&$column, $k) use (&$fields, &$table) {
+            $column = trim($column);
+            $fields[] = sprintf('`%s`.*', $table);
+            unset($column, $k);
+        };
+        $table = $this->databaseTable;
+        array_walk($this->databaseFields, $getFields);
+        foreach ((array)$this->databaseFieldClassRelationships as $class => &$arr) {
+            self::getClass($class)->getcolumns($fields);
+            unset($arr);
+        }
+        $fields = array_unique($fields);
     }
     /**
      * Removes the item from the database.
@@ -756,7 +776,7 @@ abstract class FOGController extends FOGBase
                         _('has been successfully destroyed')
                     );
                 }
-                $this->log($msg);
+                $this->logHistory($msg);
             }
         } catch (Exception $e) {
             if (!$this instanceof History) {
@@ -783,7 +803,7 @@ abstract class FOGController extends FOGBase
                         $e->getMessage()
                     );
                 }
-                $this->log($msg);
+                $this->logHistory($msg);
             }
             $msg = sprintf(
                 '%s: %s: %s, %s: %s',
@@ -890,6 +910,9 @@ abstract class FOGController extends FOGBase
                 )
             );
         }
+        if (count($array) < 1) {
+            return $this;
+        }
         $array = $array_type(
             (array) $this->get($key),
             (array) $array
@@ -938,16 +961,21 @@ abstract class FOGController extends FOGBase
     /**
      * Builds query strings as needed.
      *
-     * @param bool   $not     whether to compare using not operators
-     * @param string $compare the comparator to use
+     * @param array  $join          The join array.
+     * @param array  $whereArrayAnd The where array.
+     * @param array  $c             The join object.
+     * @param bool   $not           Whether to compare using not operator.
+     * @param string $compare       The comparator to use.
      *
      * @return array
      */
-    public function buildQuery($not = false, $compare = '=')
-    {
-        $join = array();
-        $whereArrayAnd = array();
-        $c = '';
+    public function buildQuery(
+        &$join,
+        &$whereArrayAnd,
+        &$c,
+        $not = false,
+        $compare = '='
+    ) {
         /**
          * Lambda function to build the where array additionals.
          *
@@ -1001,20 +1029,28 @@ abstract class FOGController extends FOGBase
             $not,
             $compare
         ) {
+            $className = strtolower($class);
             $c = self::getClass($class);
-            $join[] = sprintf(
-                ' LEFT OUTER JOIN `%s` ON `%s`.`%s`=`%s`.`%s` ',
-                $c->databaseTable,
-                $c->databaseTable,
-                $c->databaseFields[$fields[0]],
-                $this->databaseTable,
-                $this->databaseFields[$fields[1]]
-            );
+            if (!array_key_exists($className, $join)) {
+                $join[$className] = sprintf(
+                    ' LEFT OUTER JOIN `%s` ON `%s`.`%s`=`%s`.`%s` ',
+                    $c->databaseTable,
+                    $c->databaseTable,
+                    $c->databaseFields[$fields[0]],
+                    $this->databaseTable,
+                    $this->databaseFields[$fields[1]]
+                );
+            }
             if ($fields[3]) {
                 array_walk($fields[3], $whereInfo);
             }
+            $c->buildQuery($join, $whereArrayAnd, $c, $not, $compare);
             unset($class, $fields, $c);
         };
+        $className = strtolower(get_class($this));
+        if (!array_key_exists($className, $join)) {
+            $join[$className] = false;
+        }
         array_walk($this->databaseFieldClassRelationships, $joinInfo);
 
         return array(implode((array) $join), $whereArrayAnd);
@@ -1022,7 +1058,7 @@ abstract class FOGController extends FOGBase
     /**
      * Set's the queries data into the object as/where needed.
      *
-     * @param array $queryData the data to work from
+     * @param array $queryData The data to work from.
      *
      * @return object
      */
@@ -1035,7 +1071,7 @@ abstract class FOGController extends FOGBase
         if (count($classData) < 1) {
             $classData = array_intersect_key(
                 (array) $queryData,
-                $this->databaseFields
+                (array)$this->databaseFields
             );
         } else {
             foreach ($this->databaseFieldsFlipped as $db_key => &$obj_key) {
@@ -1043,17 +1079,19 @@ abstract class FOGController extends FOGBase
                 unset($db_key, $obj_key);
             }
         }
-        $this->data = (array) $this->data + (array) $classData;
+        $this->data = array_merge(
+            (array) $this->data,
+            (array) $classData
+        );
         foreach ($this->databaseFieldClassRelationships as $class => &$fields) {
             $class = self::getClass($class);
-            $leftover = array_intersect_key(
-                (array) $queryData,
-                (array) $class->databaseFieldsFlipped
+            $this->set(
+                $fields[2],
+                $class->setQuery($queryData)
             );
-            $class->setQuery($leftover);
-            $this->set($fields[2], $class);
             unset($class, $fields);
         }
+        unset($queryData);
 
         return $this;
     }

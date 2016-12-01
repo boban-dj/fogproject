@@ -29,9 +29,7 @@ try {
     $SnapinJob = $Host
         ->get('snapinjob');
     if (!$SnapinJob->isValid()) {
-        throw new Exception(
-            _('Invalid Snapin Job')
-        );
+        throw new Exception(0);
     }
     $snapinids = FOGCore::getSubObjectIDs(
         'SnapinTask',
@@ -41,20 +39,20 @@ try {
         ),
         'snapinID'
     );
-    if ($_REQUEST['getSnapnames']) {
+    if (isset($_REQUEST['getSnapnames'])) {
         $snapins = FOGCore::getSubObjectIDs(
             'Snapin',
             array('id' => $snapinids),
             'name'
         );
-    } elseif ($_REQUEST['getSnapargs']) {
+    } elseif (isset($_REQUEST['getSnapargs'])) {
         $snapins = FOGCore::getSubObjectIDs(
             'Snapin',
             array('id' => $snapinids),
             'args'
         );
     } else {
-        $Snapins = (
+        $snapins = (
             FOGCore::getClass('SnapinTaskManager')
             ->count(
                 array(
@@ -66,7 +64,7 @@ try {
             0
         );
     }
-    echo implode(' ', (array)$Snapins);
+    echo implode(' ', (array)$snapins);
 } catch (Exception $e) {
     echo $e->getMessage();
 }

@@ -5,20 +5,18 @@
  * PHP version 5
  *
  * @category StorageNode
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * Storage node handler class.
  *
  * @category StorageNode
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 class StorageNode extends FOGController
@@ -78,6 +76,19 @@ class StorageNode extends FOGController
         'snapinfiles',
         'logfiles',
         'usedtasks',
+        'storagegroup',
+    );
+    /**
+     * Database -> Class field relationships
+     *
+     * @var array
+     */
+    protected $databaseFieldClassRelationships = array(
+        'StorageGroup' => array(
+            'id',
+            'storagegroupID',
+            'storagegroup'
+        )
     );
     /**
      * Gets an item from the key sent, if no key all object data is returned.
@@ -98,6 +109,17 @@ class StorageNode extends FOGController
         if (in_array($key, $pathvars)) {
             return rtrim(parent::get($key), '/');
         }
+        $loaders = array(
+            'snapinfiles' => 'getSnapinfiles',
+            'images' => 'getImages',
+            'logfiles' => 'getLogfiles'
+        );
+        if (in_array($key, array_keys($loaders))
+            && !$this->isLoaded($key)
+        ) {
+            $func = $loaders[$key];
+            $this->{$func}();
+        }
 
         return parent::get($key);
     }
@@ -108,7 +130,7 @@ class StorageNode extends FOGController
      */
     public function getStorageGroup()
     {
-        return  new StorageGroup($this->get('storagegroupID'));
+        return $this->get('storagegroup');
     }
     /**
      * Get the node failure.
@@ -140,14 +162,22 @@ class StorageNode extends FOGController
     }
     /**
      * Loads the logfiles available on this node.
+     *
+     * @return void
      */
-    public function loadLogfiles()
+    public function getLogfiles()
     {
         $url = sprintf(
             'http://%s/fog/status/getfiles.php?path=%s',
             $this->get('ip'),
             '%s'
         );
+        $test = self::$FOGURLRequests->isAvailable($url);
+        $test = array_shift($test);
+        if (false === $test) {
+            $this->set('logfiles', array());
+            return;
+        }
         $paths = array(
             '/var/log/nginx',
             '/var/log/httpd',
@@ -181,62 +211,88 @@ class StorageNode extends FOGController
         $this->set('logfiles', $paths);
     }
     /**
-     * Loads the snapins available on this node.
+     * Get's the storage node snapins, logfiles, and images
+     * in a single multi call rather than three individual calls.
+     *
+     * @return void
      */
-    public function loadSnapinfiles()
+    private function _getData()
     {
         $url = sprintf(
-            'http://%s/fog/status/getfiles.php?path=%s',
-            $this->get('ip'),
-            urlencode($this->get('snapinpath'))
+            'http://%s/fog/status/getfiles.php',
+            $this->get('ip')
         );
-        $paths = self::$FOGURLRequests->process($url);
-        $paths = array_shift($paths);
-        $paths = json_decode($paths);
-        $paths = array_map('basename', $paths);
-        $paths = preg_replace(
-            '#dev|postdownloadscripts|ssl#',
-            '',
-            $paths
+        $test = self::$FOGURLRequests->isAvailable($url);
+        $test = array_shift($test);
+        if ($test === false) {
+            $this
+                ->set('images', array())
+                ->set('logfiles', array())
+                ->set('snapinfiles', array());
+            return;
+        }
+        $keys = array(
+            'images' => urlencode($this->get('path')),
+            'snapinfiles' => urlencode($this->get('snapinpath'))
         );
-        $paths = array_unique(
-            (array) $paths
-        );
-        $paths = array_filter(
-            (array) $paths
-        );
-        $this->set('snapinfiles', array_values($paths));
+        $urls = array();
+        foreach ((array)$keys as $key => &$data) {
+            $urls[] = sprintf(
+                '%s?path=%s',
+                $url,
+                $data
+            );
+            unset($data);
+        }
+        $paths = self::$FOGURLRequests->process($urls);
+        $pat = '#dev|postdownloadscripts|ssl#';
+        $values = array();
+        $index = 0;
+        foreach ((array)$keys as $key => &$data) {
+            $values = $paths[$index];
+            unset($paths[$index]);
+            $values = json_decode($values, true);
+            $values = array_map('basename', (array)$values);
+            $values = preg_replace(
+                $pat,
+                '',
+                $values
+            );
+            $values = array_unique(
+                (array)$values
+            );
+            $values = array_filter(
+                (array)$values
+            );
+            if ($key === 'images') {
+                $values = self::getSubObjectIDs(
+                    'Image',
+                    array('path' => $values)
+                );
+            }
+            $this->set($key, $values);
+            $index++;
+            unset($data);
+        }
+        unset($values, $paths);
     }
     /**
      * Loads the snapins available on this node.
+     *
+     * @return void
      */
-    public function loadImages()
+    public function getSnapinfiles()
     {
-        $url = sprintf(
-            'http://%s/fog/status/getfiles.php?path=%s',
-            $this->get('ip'),
-            urlencode($this->get('path'))
-        );
-        $paths = self::$FOGURLRequests->process($url);
-        $paths = array_shift($paths);
-        $paths = json_decode($paths);
-        $paths = array_map('basename', (array) $paths);
-        $paths = preg_replace(
-            '#dev|postdownloadscripts|ssl#',
-            '',
-            $paths
-        );
-        $paths = array_unique(
-            (array) $paths
-        );
-        $paths = array_filter(
-            (array) $paths
-        );
-        $ids = self::getSubObjectIDs(
-            'Image',
-            array('path' => $paths)
-        );
-        $this->set('images', $ids);
+        $this->_getData();
+    }
+    /**
+     * Loads the images available on this node.
+     *
+     * @return void
+     */
+    public function getImages()
+    {
+        $this->_getData();
     }
     /**
      * Gets this node's load of clients.
@@ -255,6 +311,8 @@ class StorageNode extends FOGController
     }
     /**
      * Load used tasks.
+     *
+     * @return void
      */
     protected function loadUsedtasks()
     {

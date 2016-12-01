@@ -5,20 +5,18 @@
  * PHP version 5
  *
  * @category Snapin
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * The snapin object.
  *
  * @category Snapin
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 class Snapin extends FOGController
@@ -138,9 +136,22 @@ class Snapin extends FOGController
     {
         parent::save();
 
-        return $this
+        $primary = self::getSubObjectIDs(
+            'SnapinGroupAssociation',
+            array(
+                'snapinID' => $this->get('id'),
+                'primary' => 1
+            ),
+            'storagegroupID'
+        );
+        $this
             ->assocSetter('Snapin', 'host')
             ->assocSetter('SnapinGroup', 'storagegroup');
+        if (count($primary) > 0) {
+            $primary = array_shift($primary);
+            $this->setPrimaryGroup($primary);
+        }
+        return $this;
     }
     /**
      * Deletes the snapin file.
@@ -188,6 +199,8 @@ class Snapin extends FOGController
     }
     /**
      * Loads hosts.
+     *
+     * @return void
      */
     protected function loadHosts()
     {
@@ -234,6 +247,8 @@ class Snapin extends FOGController
     }
     /**
      * Loads items not with this object.
+     *
+     * @return void
      */
     protected function loadHostsnotinme()
     {
@@ -248,6 +263,8 @@ class Snapin extends FOGController
     }
     /**
      * Loads storage groups with this object.
+     *
+     * @return void
      */
     protected function loadStoragegroups()
     {
@@ -262,8 +279,8 @@ class Snapin extends FOGController
         );
         $groupids = array_filter($groupids);
         if (count($groupids) < 1) {
-            $groupIDs = self::getSubObjectIDs('StorageGroup');
-            $groupids = @min($groupIDs);
+            $groupids = self::getSubObjectIDs('StorageGroup');
+            $groupids = @min($groupids);
         }
         $this->set('storagegroups', $groupids);
     }
@@ -299,6 +316,8 @@ class Snapin extends FOGController
     }
     /**
      * Loads groups not with this snapin.
+     *
+     * @return void
      */
     protected function loadStoragegroupsnotinme()
     {
@@ -315,7 +334,6 @@ class Snapin extends FOGController
      * Gets the storage group.
      *
      * @throws Exception
-     *
      * @return object
      */
     public function getStorageGroup()
@@ -364,9 +382,7 @@ class Snapin extends FOGController
         if ($primaryCount < 1) {
             $primaryCount = self::getClass('SnapinGroupAssociationManager')
                 ->count(
-                    array(
-                        'snapinID' => $this->get('id'),
-                    )
+                    array('snapinID' => $this->get('id'))
                 );
         }
         if ($primaryCount < 1) {
@@ -381,7 +397,7 @@ class Snapin extends FOGController
                 'snapinID' => $this->get('id'),
             )
         );
-        $assocID = @min($assocID);
+        $assocID = @min((array) $assocID);
 
         return self::getClass('SnapinGroupAssociation', $assocID)->isPrimary();
     }
@@ -394,18 +410,21 @@ class Snapin extends FOGController
      */
     public function setPrimaryGroup($groupID)
     {
+        /**
+         * Unset all current groups to non-primary
+         */
         self::getClass('SnapinGroupAssociationManager')
             ->update(
                 array(
                     'snapinID' => $this->get('id'),
-                    'storagegroupID' => array_diff(
-                        (array) $this->get('storagegroups'),
-                        (array) $groupID
-                    ),
-                    '',
-                    array('primary' => 0),
-                )
+                    'storagegroupID' => $this->get('storagegroups')
+                ),
+                '',
+                array('primary' => 0)
             );
+        /**
+         * Set the passed group as primary
+         */
         self::getClass('SnapinGroupAssociationManager')
             ->update(
                 array(
@@ -419,6 +438,8 @@ class Snapin extends FOGController
     /**
      * Loads the Path as the file for commonality
      * in some methods.
+     *
+     * @return void
      */
     protected function loadPath()
     {

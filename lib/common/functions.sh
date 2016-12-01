@@ -530,9 +530,11 @@ configureMinHttpd() {
     echo "die(_('This is a storage node, please do not access the web ui here!'));" >> "$webdirdest/management/index.php"
 }
 addUbuntuRepo() {
+    find /etc/apt/sources.list.d/ -name '*ondrej*' -exec rm -rf {} \; >/dev/null 2>&1
     DEBIAN_FRONTEND=noninteractive $packageinstaller python-software-properties software-properties-common >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     ntpdate pool.ntp.org >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     add-apt-repository -y ppa:ondrej/$repo >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    add-apt-repository -y ppa:ondrej/apache2 >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     return $?
 }
 installPackages() {
@@ -625,7 +627,7 @@ installPackages() {
         fi
     fi
     errorStat $?
-    packages=$(echo "${packages[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+    packages=$(echo ${packages[@]} | tr ' ' '\n' | sort -u | tr '\n' ' ')
     echo -e " * Packages to be installed:\n\n\t$packages\n\n"
     newPackList=""
     for x in $packages; do
@@ -657,7 +659,7 @@ installPackages() {
                     fi
                 done
                 ;;
-            php${php_ver}-mysqlnd)
+            php${php_ver}-mysql*)
                 for phpmysql in $(echo php${php_ver}-mysqlnd php${php_ver}-mysql); do
                     eval $packagelist "$phpmysql" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
                     if [[ $? -eq 0 ]]; then
@@ -686,8 +688,8 @@ installPackages() {
         DEBIAN_FRONTEND=noninteractive $packageinstaller $x >>$workingdir/error_logs/fog_error_${version}.log 2>&1
         errorStat $?
     done
-    packages=$(echo $newPackList)
-    packages=$(echo "${packages[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+    packages=$newPackList
+    packages=$(echo ${packages[@]} | tr ' ' '\n' | sort -u | tr '\n' ' ')
     dots "Updating packages as needed"
     DEBIAN_FRONTEND=noninteractive $packageupdater $packages >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     echo "OK"
@@ -695,36 +697,6 @@ installPackages() {
 confirmPackageInstallation() {
     for x in $packages; do
         dots "Checking package: $x"
-        case $x in
-            mysql)
-                for sqlclient in $sqlclientlist; do
-                    x=$sqlclient
-                    eval $packageQuery >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    [[ $? -eq 0 ]] && break
-                done
-                ;;
-            mysql-server)
-                for sqlserver in $sqlserverlist; do
-                    x=$sqlserver
-                    eval $packageQuery >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    [[ $? -eq 0 ]] && break
-                done
-                ;;
-            php${php_ver}-json)
-                for json in $jsontest; do
-                    x=$json
-                    eval $packageQuery >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    [[ $? -eq 0 ]] && break
-                done
-                ;;
-            php${php_ver}-mysqlnd)
-                for phpmysql in $(echo php${php_ver}-mysqlnd php${php_ver}-mysql); do
-                    x=$phpmysql
-                    eval $packageQuery >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    [[ $? -eq 0 ]] && break
-                done
-                ;;
-        esac
         eval $packageQuery >>$workingdir/error_logs/fog_error_${version}.log 2>&1
         errorStat $?
     done
@@ -803,12 +775,11 @@ errorStat() {
     local status=$1
     if [[ $status != 0 ]]; then
         echo "Failed!"
-        [[ -z $exitFaile ]] && exit 1
+        [[ -z $exitFail ]] && exit $status
     fi
     echo "OK"
 }
 stopInitScript() {
-    serviceList="$initdMCfullname $initdIRfullname $initdSRfullname $initdSDfullname $initdPHfullname"
     for serviceItem in $serviceList; do
         dots "Stopping $serviceItem Service"
         if [ "$systemctl" == "yes" ]; then
@@ -820,7 +791,6 @@ stopInitScript() {
     done
 }
 startInitScript() {
-    serviceList="$initdMCfullname $initdIRfullname $initdSRfullname $initdSDfullname $initdPHfullname"
     for serviceItem in $serviceList; do
         dots "Starting $serviceItem Service"
         if [[ $systemctl == yes ]]; then
@@ -832,7 +802,6 @@ startInitScript() {
     done
 }
 enableInitScript() {
-    serviceList="$initdMCfullname $initdIRfullname $initdSRfullname $initdSDfullname $initdPHfullname"
     for serviceItem in $serviceList; do
         case $systemctl in
             yes)
@@ -1134,7 +1103,7 @@ writeUpdateFile() {
     escstartrange=$(echo $startrange | sed -e $replace)
     escendrange=$(echo $endrange | sed -e $replace)
     escbootfilename=$(echo $bootfilename | sed -e $replace)
-    escpackages=$(echo "$packages" | sed -e $replace)
+    escpackages=$(echo $packages | sed -e $replace)
     escnoTftpBuild=$(echo $noTftpBuild | sed -e $replace)
     escnotpxedefaultfile=$(echo $notpxedefaultfile | sed -e $replace)
     escsslpath=$(echo $sslpath | sed -e $replace)
@@ -1142,6 +1111,7 @@ writeUpdateFile() {
     escphp_ver=$(echo $php_ver | sed -e $replace)
     escphp_verAdds=$(echo $php_verAdds | sed -e $replace)
     escsslprivkey=$(echo $sslprivkey | sed -e $replace)
+    [[ -z $copybackold || $copybackold -lt 1 ]] && copybackold=0
     if [[ -f $fogprogramdir/.fogsettings ]]; then
         grep -q "^## Start of FOG Settings" $fogprogramdir/.fogsettings || grep -q "^## Version:.*" $fogprogramdir/.fogsettings
         if [[ $? == 0 ]]; then
@@ -1151,6 +1121,9 @@ writeUpdateFile() {
             grep -q "ipaddress=" $fogprogramdir/.fogsettings && \
                 sed -i "s/ipaddress=.*/ipaddress='$escipaddress'/g" $fogprogramdir/.fogsettings || \
                 echo "ipaddress='$ipaddress'" >> $fogprogramdir/.fogsettings
+            grep -q "copybackold=" $fogprogramdir/.fogsettings && \
+                sed -i "s/copybackold=.*/copybackold='$copybackold'/g" $fogprogramdir/.fogsettings || \
+                echo "copybackold='$copybackold'" >> $fogprogramdir/.fogsettings
             grep -q "interface=" $fogprogramdir/.fogsettings && \
                 sed -i "s/interface=.*/interface='$escinterface'/g" $fogprogramdir/.fogsettings || \
                 echo "interface='$interface'" >> $fogprogramdir/.fogsettings
@@ -1266,6 +1239,7 @@ writeUpdateFile() {
             echo "## Version: $version" >> "$fogprogramdir/.fogsettings"
             echo "## Install time: $tmpDte" >> "$fogprogramdir/.fogsettings"
             echo "ipaddress='$ipaddress'" >> "$fogprogramdir/.fogsettings"
+            echo "copybackold='$copybackold'" >> "$fogprogramdir/.fogsettings"
             echo "interface='$interface'" >> "$fogprogramdir/.fogsettings"
             echo "submask='$submask'" >> "$fogprogramdir/.fogsettings"
             echo "routeraddress='$routeraddress'" >> "$fogprogramdir/.fogsettings"
@@ -1309,6 +1283,7 @@ writeUpdateFile() {
         echo "## Version: $version" >> "$fogprogramdir/.fogsettings"
         echo "## Install time: $tmpDte" >> "$fogprogramdir/.fogsettings"
         echo "ipaddress='$ipaddress'" >> "$fogprogramdir/.fogsettings"
+        echo "copybackold='$copybackold'" >> "$fogprogramdir/.fogsettings"
         echo "interface='$interface'" >> "$fogprogramdir/.fogsettings"
         echo "submask='$submask'" >> "$fogprogramdir/.fogsettings"
         echo "routeraddress='$routeraddress'" >> "$fogprogramdir/.fogsettings"
@@ -1432,8 +1407,8 @@ EOF
         ln -s $webdirdest $webdirdest/ >>$workingdir/error_logs/fog_error_${version}.log 2>&1
         if [[ $osid -eq 2 ]]; then
             a2enmod $phpcmd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-            a2enmod proxy_fcgi setenvif >>$workingdir/error_logs/fog_err_${version}.log 2>&1
-            a2enmod $phpfpm >>$workingdir/error_logs/fog_err_${version}.log 2>&1
+            a2enmod proxy_fcgi setenvif >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            a2enmod $phpfpm >>$workingdir/error_logs/fog_error_${version}.log 2>&1
             a2enmod rewrite >>$workingdir/error_logs/fog_error_${version}.log 2>&1
             a2enmod ssl >>$workingdir/error_logs/fog_error_${version}.log 2>&1
             a2ensite "001-fog" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
@@ -1527,7 +1502,7 @@ configureHttpd() {
         rm $etcconf >>$workingdir/error_logs/fog_error_${version}.log 2>&1
         errorStat $?
     fi
-    if [[ $installtype == N && ! $fogupdateloaded -eq 1 && -z $autoaccept ]]; then
+    if [[ $installtype == +([Nn]) && ! $fogupdateloaded -eq 1 && -z $autoaccept ]]; then
         dummy=""
         while [[ -z $dummy ]]; do
             echo -n " * Is the MySQL password blank? (Y/n) "
@@ -1566,18 +1541,20 @@ configureHttpd() {
             esac
         done
     fi
-    if [[ -z $snmysqlpass ]]; then
-        sql="ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';"
-        options="-s"
-        [[ -n $snmysqlhost ]] && options="$options -h$snmysqlhost"
-        [[ -n $snmysqluser ]] && options="$options -u'$snmysqluser'"
-        [[ -n $snmysqlpass ]] && options="$options -p'$snmysqlpass'"
-        mysqlver=$(mysql -V | awk 'match($0,/Distrib[ ](.*)[,]/,a) {print a[1]}')
-        mariadb=$(echo $mysqlver | grep -oi mariadb)
-        mysqlver=$(echo $mysqlver | awk -F'([.])' '{print $1"."$2}')
-        [[ -n $mariadb ]] && vertocheck="10.2" || vertocheck="5.7"
-        runTest=$(echo "$mysqlver < $vertocheck" | bc)
-        [[ $runTest -eq 0 ]] && mysql ${options} -e "$sql"
+    options="-s"
+    [[ -n $snmysqlhost ]] && options="$options -h$snmysqlhost"
+    [[ -n $snmysqluser ]] && options="$options -u'$snmysqluser'"
+    [[ -n $snmysqlpass ]] && options="$options -p'$snmysqlpass'"
+    mysqlver=$(mysql -V | awk 'match($0,/Distrib[ ](.*)[,]/,a) {print a[1]}')
+    mariadb=$(echo $mysqlver | grep -oi mariadb)
+    mysqlver=$(echo $mysqlver | awk -F'([.])' '{print $1"."$2}')
+    [[ -n $mariadb ]] && vertocheck="10.2" || vertocheck="5.7"
+    runTest=$(echo "$mysqlver < $vertocheck" | bc)
+    if [[ $runTest -eq 0 ]]; then
+        [[ -z $snmysqlhost ]] && snmysqlhost='localhost'
+        [[ -z $snmysqluser ]] && snmysqluser='root'
+        sql="ALTER USER '$snmysqluser'@'$snmysqlhost' IDENTIFIED WITH mysql_native_password BY '$snmysqlpass';"
+        mysql ${options} -e "$sql" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     fi
     dots "Setting up Apache and PHP files"
     if [[ ! -f $phpini ]]; then
@@ -1660,21 +1637,23 @@ configureHttpd() {
         ln -s $webdirdest  ${docroot}/fog >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     fi
     errorStat $?
-    if [[ -d ${backupPath}/fog_web_${version}.BACKUP ]]; then
-        dots "Copying back old web folder as is";
-        cp -Rf ${backupPath}/fog_web_${version}.BACKUP/* $webdirdest/
-        errorStat $?
-        dots "Ensuring all classes are lowercased"
-        for i in $(find $webdirdest -type f -name "*[A-Z]*\.class\.php"); do
-            mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        done
-        for i in $(find $webdirdest -type f -name "*[A-Z]*\.event\.php"); do
-            mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        done
-        for i in $(find $webdirdest -type f -name "*[A-Z]*\.hook\.php"); do
-            mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        done
-        errorStat $?
+    if [[ $copybackold -gt 0 ]]; then
+        if [[ -d ${backupPath}/fog_web_${version}.BACKUP ]]; then
+            dots "Copying back old web folder as is";
+            cp -Rf ${backupPath}/fog_web_${version}.BACKUP/* $webdirdest/
+            errorStat $?
+            dots "Ensuring all classes are lowercased"
+            for i in $(find $webdirdest -type f -name "*[A-Z]*\.class\.php"); do
+                mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            done
+            for i in $(find $webdirdest -type f -name "*[A-Z]*\.event\.php"); do
+                mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            done
+            for i in $(find $webdirdest -type f -name "*[A-Z]*\.hook\.php"); do
+                mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            done
+            errorStat $?
+        fi
     fi
     dots "Copying new files to web folder"
     cp -Rf $webdirsrc/* $webdirdest/
@@ -1890,21 +1869,21 @@ class Config
     if [[ $osid -eq 2 ]]; then
         php -m | grep mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
         if [[ ! $? -eq 0 ]]; then
-            php${php_ver}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            ${phpcmd}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
             if [[ ! $? -eq 0 ]]; then
                 if [[ -e /etc/php${php_ver}/conf.d/mysqlnd.ini ]]; then
                     cp -f "/etc/php${php_ver}/conf.d/mysqlnd.ini" "/etc/php${php_ver}/mods-available/php${php_ver}-mysqlnd.ini" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    php${php_ver}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                    ${phpcmd}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
                 fi
             fi
         fi
         php -m | grep mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
         if [[ ! $? -eq 0 ]]; then
-            php${php_ver}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            ${phpcmd}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
             if [[ ! $? -eq 0 ]]; then
                 if [[ -e /etc/php${php_ver}/conf.d/mcrypt.ini ]]; then
                     cp -f "/etc/php${php_ver}/conf.d/mcrypt.ini" "/etc/php${php_ver}/mods-available/php${php_ver}-mcrypt.ini" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    php${php_ver}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                    ${phpcmd}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
                 fi
             fi
         fi

@@ -5,7 +5,9 @@
  *	Revision:	$Revision: 2430 $
  *	Last Update:	$LastChangedDate: 2014-10-16 11:55:06 -0400 (Thu, 16 Oct 2014) $
  ***/
-var validatoropts;
+var validatoropts,
+    screenview,
+    callme;
 var $_GET = getQueryParams(document.location.search),
     node = $_GET['node'],
     sub = $_GET['sub'],
@@ -43,7 +45,11 @@ function getChecked() {
 }
 function setTipsyStuff() {
     $('.box,.icon,.icon-ping-up,.icon-ping-down,#logo > h1 > a > img').tipsy({
-        gravity: $.fn.tipsy.autoNS,
+        gravity: $.fn.tipsy.autoNS
+    }).mouseenter(function() {
+        $('.tipsy').css({
+            'min-width': '35px',
+        });
     });
 }
 function setEditFocus() {
@@ -76,13 +82,14 @@ function AJAXServerTime() {
 }
 (function($) {
     $.validator.addMethod(
-        'regex',
-        function(value, element,regexp) {
-            var re = new RegExp(regexp);
-            return this.optional(element) || re.test(value);
-        },
-        "Invalid Input"
-    );
+            'regex',
+            function(value, element,regexp) {
+                var re = new RegExp(regexp);
+                return this.optional(element) || re.test(value);
+            },
+            "Invalid Input"
+            );
+    screenview = $('#screenview').attr('value');
     setTipsyStuff();
     setEditFocus();
     Content = $('#content');
@@ -91,14 +98,74 @@ function AJAXServerTime() {
     i = Loader.find('i');
     ActionBox = $('#action-box');
     ActionBoxDel = $('#action-boxdel');
-    var callme = 'hide';
-    if ((typeof(sub) == 'undefined' || $.inArray(sub,['list','search','storage-group']) > -1) && $('.no-active-tasks').length < 1) callme = 'show';
+    callme = 'hide';
+    if ((typeof(sub) == 'undefined' || $.inArray(sub,['list','search','storageGroup','listhosts','listgroups']) > -1) && $('.no-active-tasks').length < 1) callme = 'show';
     ActionBox[callme]();
     ActionBoxDel[callme]();
     setupParserInfo();
     setupFogTableInfoFunction();
     AJAXServerTime();
     setInterval(AJAXServerTime,60000);
+    $('.list,.search,.storageGroup,.listhosts,.listgroups').click(function(e) {
+        if (sub && $.inArray(sub,['list','search','storageGroup','listhosts','listgroups']) < 0) {
+            return;
+        }
+        e.preventDefault();
+        url = $(this).prop('href');
+        this.listAJAX = $.ajax({
+            cache: false,
+            context: this,
+            url: $(this).prop('href'),
+            dataType: 'json',
+            beforeSend: function() {
+                Loader
+                    .addClass('loading')
+            },
+            success: function(response) {
+                history.pushState(null, null, url);
+                if (response === null || response.data === null) {
+                    dataLength = 0;
+                } else {
+                    dataLength = response.data.length;
+                }
+                $('.title').html(response.title);
+                thead = $('thead', Container);
+                tbody = $('tbody', Container);
+                LastCount = dataLength;
+                Loader.removeClass('loading')
+                    .fogStatusUpdate(_L['SEARCH_RESULTS_FOUND']
+                            .replace(/%1/,LastCount)
+                            .replace(/%2/,LastCount != 1 ? 's' : '')
+                            )
+                    .find('i')
+                    .removeClass()
+                    .addClass('fa fa-exclamation-circle');
+                if (dataLength > 0) {
+                    buildHeaderRow(response.headerData, response.attributes, 'th');
+                    thead = $('thead', Container);
+                    buildRow(response.data, response.templates, response.attributes, 'td');
+                }
+                TableCheck();
+                this.listAJAX = null;
+                checkboxToggleSearchListPages();
+            }
+        });
+    });
+    if ($.inArray(sub,['list','listhosts','listgroups','storageGroup']) > -1) {
+        $('.'+sub).trigger('click');
+    }
+    /**
+     * On any form submission, attempt to trim the input fields automatically.
+     */
+    $('input, textarea').focusout(function() {
+        this.value=$(this).val().trim();
+    });
+    $('form').children().each(function() {
+        this.value=$(this).val().trim();
+    });
+    if (screenview == 'list') {
+        $('.list').trigger('click');
+    }
 })(jQuery);
 function forceClick(e) {
     $(this).unbind('click').click(function(evt) {evt.preventDefault();});
@@ -240,10 +307,14 @@ $.fn.fogStatusUpdate = function(txt, opts) {
     var i = Loader.find('i');
     var p = Loader.find('p');
     var ProgressBar = $('#progress',this);
-    if (Options.Progress) ProgressBar.show().progressBar(Options.Progress);
-    else ProgressBar.hide().progressBar(0);
-    if (!txt) p.remove().end().hide();
-    else {
+    if (Options.Progress) {
+        ProgressBar.show().progressBar(Options.Progress);
+    } else {
+        ProgressBar.hide().progressBar(0);
+    }
+    if (!txt) {
+        p.remove().end().hide();
+    } else {
         i.addClass('fa fa-exclamation-circle fw');
         p.remove().end().append((Options.Raw ? txt : '<p>'+txt+'</p>')).show();
     }
@@ -270,6 +341,9 @@ function showProgressBar() {
     });
 }
 function buildHeaderRow(data,attributes,wrapper) {
+    if (!Container || typeof(Container) === null || typeof(Container) === 'undefined') {
+        Container = $('#search-content,#active-tasks');
+    }
     savedFilters = Container.find('.tablesorter-filter').map(function(){
         return this.value || '';
     }).get();
@@ -320,9 +394,12 @@ function buildRow(data,templates,attributes,wrapper) {
     HookTooltips();
 }
 function TableCheck() {
-    var callme = 'hide';
+    if (!Container || typeof(Container) === null || typeof(Container) === 'undefined') {
+        Container = $('#search-content,#active-tasks');
+    }
+    callme = 'hide';
     if ($('.not-found').length === 0) Container.after('<p class="c not-found">'+_L['NO_ACTIVE_TASKS']+'</p>');
-    if (LastCount > 0) {
+    if (typeof(LastCount) != 'undefined' && LastCount > 0) {
         if ($('.not-found').length > 0) $('.not-found').remove();
         callme = 'show';
     }
@@ -334,7 +411,7 @@ function TableCheck() {
     ActionBox[callme]();
     ActionBoxDel[callme]();
     thead[callme]();
-    if (node == 'task' && sub != 'search') {
+    if (node == 'task' && $.inArray(sub, ['search', 'listhosts', 'listgroups']) < 0) {
         pauseUpdate[callme]();
         cancelTasks[callme]();
     }

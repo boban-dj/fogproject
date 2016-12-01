@@ -7,20 +7,18 @@
  * This gives all the rest of the classes a common frame to work from.
  *
  * @category FOGBase
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * FOGBase, the base class for pretty much all of fog.
  *
  * @category FOGBase
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 abstract class FOGBase
@@ -49,6 +47,18 @@ abstract class FOGBase
      * @var bool
      */
     public static $service = false;
+    /**
+     * Tells if we are json or not
+     *
+     * @var bool
+     */
+    public static $json = false;
+    /**
+     * Tells if we are new service or not
+     *
+     * @var bool
+     */
+    public static $newService = false;
     /**
      * Tests/sets if a given key is loaded already.
      *
@@ -216,6 +226,8 @@ abstract class FOGBase
     public static $mySchema = 0;
     /**
      * Initializes the FOG System if needed.
+     *
+     * @return void
      */
     private static function _init()
     {
@@ -273,6 +285,11 @@ abstract class FOGBase
         }
         self::$ajax = preg_match('#^xmlhttprequest$#i', self::$httpreqwith);
         self::$post = preg_match('#^post$#i', self::$reqmethod);
+        self::$newService = isset($_REQUEST['newService'])
+            || $_REQUEST['sub'] == 'requestClientInfo';
+        self::$json = isset($_REQUEST['json'])
+            || self::$newService
+            || $_REQUEST['sub'] == 'requestClientInfo';
         self::$FOGURLRequests = &$FOGURLRequests;
         self::$FOGPageManager = &$FOGPageManager;
         self::$TimeZone = &$TimeZone;
@@ -453,6 +470,7 @@ abstract class FOGBase
                 } else {
                     $msg = _('Invalid Host');
                 }
+                throw new Exception($msg);
             }
         }
 
@@ -542,6 +560,8 @@ abstract class FOGBase
      *
      * @param string $txt  the string to use
      * @param array  $data the data if txt is formatted string
+     *
+     * @return void
      */
     protected function fatalError($txt, $data = array())
     {
@@ -554,7 +574,6 @@ abstract class FOGBase
             get_class($this),
             $data
         );
-        $this->logHistory($string);
         printf('<div class="debug-error">%s</div>', $string);
     }
     /**
@@ -562,6 +581,8 @@ abstract class FOGBase
      *
      * @param string $txt  the string to use
      * @param array  $data the data if txt is formatted string
+     *
+     * @return void
      */
     protected function error($txt, $data = array())
     {
@@ -574,7 +595,6 @@ abstract class FOGBase
             get_class($this),
             $data
         );
-        $this->logHistory($string);
         printf('<div class="debug-error">%s</div>', $string);
     }
     /**
@@ -582,6 +602,8 @@ abstract class FOGBase
      *
      * @param string $txt  the string to use
      * @param array  $data the data if txt is formatted string
+     *
+     * @return void
      */
     protected function debug($txt, $data = array())
     {
@@ -594,7 +616,6 @@ abstract class FOGBase
             get_class($this),
             $data
         );
-        $this->logHistory($string);
         printf('<div class="debug-error">%s</div>', $string);
     }
     /**
@@ -602,6 +623,8 @@ abstract class FOGBase
      *
      * @param string $txt  the string to use
      * @param array  $data the data if txt is formatted string
+     *
+     * @return void
      */
     protected function info($txt, $data = array())
     {
@@ -614,7 +637,6 @@ abstract class FOGBase
             get_class($this),
             $data
         );
-        $this->logHistory($string);
         printf('<div class="debug-info">%s</div>', $string);
     }
     /**
@@ -622,6 +644,8 @@ abstract class FOGBase
      *
      * @param string $txt  the string to use
      * @param array  $data the data if txt is formatted string
+     *
+     * @return void
      */
     protected function setMessage($txt, $data = array())
     {
@@ -662,6 +686,8 @@ abstract class FOGBase
      * Redirect pages where/when necessary.
      *
      * @param string $url The url to redirect to
+     *
+     * @return void
      */
     protected function redirect($url = '')
     {
@@ -685,6 +711,7 @@ abstract class FOGBase
      * @param mixed  $new_value the value to insert
      *
      * @throws Exception
+     * @return void
      */
     protected function arrayInsertBefore($key, array &$array, $new_key, $new_value)
     {
@@ -710,6 +737,7 @@ abstract class FOGBase
      * @param mixed  $new_value the value to insert
      *
      * @throws Exception
+     * @return void
      */
     protected function arrayInsertAfter($key, array &$array, $new_key, $new_value)
     {
@@ -733,6 +761,7 @@ abstract class FOGBase
      * @param array        $array the array to work with
      *
      * @throws Exception
+     * @return void
      */
     protected function arrayRemove($key, array &$array)
     {
@@ -793,6 +822,8 @@ abstract class FOGBase
     }
     /**
      * Reset request variables.
+     *
+     * @return void
      */
     protected function resetRequest()
     {
@@ -809,6 +840,8 @@ abstract class FOGBase
     }
     /**
      * Set request vars particularly for post failures really.
+     *
+     * @return void
      */
     protected function setRequest()
     {
@@ -1228,6 +1261,7 @@ abstract class FOGBase
      * @param string $new_key the key to change to
      *
      * @throws Exception
+     * @return void
      */
     protected function arrayChangeKey(array &$array, $old_key, $new_key)
     {
@@ -1265,38 +1299,25 @@ abstract class FOGBase
     /**
      * Converts hex to binary equivalent.
      *
-     * @param mixed $hex the hex to convert
+     * @param mixed $hex The hex to convert.
      *
      * @return string
      */
     protected function hex2bin($hex)
     {
-        /**
-         * Lambda to perform the action.
-         *
-         * If the function hex2bin exists, use it and return.
-         *
-         * @param mixed $keyToUnhex the key to convert
-         *
-         * @return string
-         */
-        $hex2bin = function ($keyToUnhex) {
-            if (function_exists('hex2bin')) {
-                return hex2bin($keyToUnhex);
-            }
-            $n = strlen($keyToUnhex);
-            $i = 0;
-            $sbin = '';
-            while ($i < $n) {
-                $a = substr($hex, $i, 2);
-                $sbin .= pack('H*', $a);
-                $i += 2;
-            }
+        if (function_exists('hex2bin')) {
+            return hex2bin($hex);
+        }
+        $n = strlen($hex);
+        $i = 0;
+        $sbin = '';
+        while ($i < $n) {
+            $a = substr($hex, $i, 2);
+            $sbin .= pack('H*', $a);
+            $i += 2;
+        }
 
-            return $sbin;
-        };
-
-        return $hex2bin($hex);
+        return $sbin;
     }
     /**
      * Create security token.
@@ -1524,8 +1545,11 @@ abstract class FOGBase
      *
      * @return array
      */
-    public function parseMacList($stringlist, $image = false, $client = false)
-    {
+    public function parseMacList(
+        $stringlist,
+        $image = false,
+        $client = false
+    ) {
         $MAClist = array();
         $MACs = $stringlist;
         $lowerAndTrim = function ($element) {
@@ -1539,6 +1563,29 @@ abstract class FOGBase
         $MACs = array_filter($MACs);
         $MACs = array_unique($MACs);
         $MACs = array_values($MACs);
+        if (count($MACs) < 1) {
+            return array();
+        }
+        $pending_filter = explode(
+            ',',
+            self::getSetting('FOG_QUICKREG_PENDING_MAC_FILTER')
+        );
+        $Ignore = array_map($lowerAndTrim, $pending_filter);
+        $Ignore = array_filter($Ignore);
+        if (count($Ignore) > 0) {
+            $pattern = sprintf(
+                '#%s#i',
+                implode('|', (array) $Ignore)
+            );
+            $found_macs = preg_grep($pattern, $MACs);
+            $MACs = array_diff($MACs, $found_macs);
+            $MACs = array_filter($MACs);
+            $MACs = array_unique($MACs);
+            $MACs = array_values($MACs);
+        }
+        if (count($MACs) < 1) {
+            return array();
+        }
         $count = self::getClass('MACAddressAssociationManager')->count(
             array(
                 'mac' => $MACs,
@@ -1590,22 +1637,8 @@ abstract class FOGBase
         $MACs = array_filter($MACs);
         $MACs = array_unique($MACs);
         $MACs = array_values($MACs);
-        $pending_filter = explode(
-            ',',
-            self::getSetting('FOG_QUICKREG_PENDING_MAC_FILTER')
-        );
-        $Ignore = array_map($lowerAndTrim, $pending_filter);
-        $Ignore = array_filter($Ignore);
-        if (count($Ignore) > 0) {
-            $pattern = sprintf(
-                '#%s#i',
-                implode('|', (array) $Ignore)
-            );
-            $found_macs = preg_grep($pattern, $MACs);
-            $MACs = array_diff($MACs, $found_macs);
-            $MACs = array_filter($MACs);
-            $MACs = array_unique($MACs);
-            $MACs = array_values($MACs);
+        if (count($MACs) < 1) {
+            return array();
         }
         $validMACs = array();
         foreach ($MACs as &$MAC) {
@@ -1625,12 +1658,17 @@ abstract class FOGBase
      *
      * @param string $datatosend the data to send
      * @param bool   $service    if not a service simpy return
+     * @param array  $array      The non-encoded array data.
      *
      * @return string
      */
-    protected function sendData($datatosend, $service = true)
-    {
-        if (!$service) {
+    protected function sendData(
+        $datatosend,
+        $service = true,
+        $array = array()
+    ) {
+        global $sub;
+        if (false === $service) {
             return;
         }
         try {
@@ -1640,8 +1678,7 @@ abstract class FOGBase
             if ($curdate >= $secdate) {
                 $this->Host->set('pub_key', '')->save();
             }
-            global $sub;
-            if ($this->newService) {
+            if (self::$newService) {
                 printf(
                     '#!enkey=%s',
                     $this->certEncrypt($datatosend, $this->Host)
@@ -1652,12 +1689,20 @@ abstract class FOGBase
                 exit;
             }
         } catch (Exception $e) {
-            if ($this->json) {
+            if (self::$json) {
+                if ($e->getMessage() === '#!ihc') {
+                    echo $e->getMessage();
+                    exit;
+                }
                 $repData = preg_replace('/^[#][!]?/', '', $e->getMessage());
-
-                return array(
-                    'error' => $repData,
-                );
+                $array['error'] = $repData;
+                $data = array('error' => $repData);
+                if ($sub === 'requestClientInfo') {
+                    echo json_encode($array);
+                    exit;
+                } else {
+                    return $data;
+                }
             }
             throw new Exception($e->getMessage());
         }
@@ -1690,6 +1735,7 @@ abstract class FOGBase
      * @param int    $level the level of the logging
      *
      * @throws Exception
+     * @return void
      */
     protected function log($txt, $level = 1)
     {
@@ -1719,6 +1765,8 @@ abstract class FOGBase
      * Log to history table.
      *
      * @param string $string the string to store
+     *
+     * @return void
      */
     protected function logHistory($string)
     {
@@ -1728,6 +1776,11 @@ abstract class FOGBase
         if (!(self::$FOGUser instanceof User && self::$FOGUser->isValid())) {
             return;
         }
+        $string = sprintf(
+            '[%s] %s',
+            self::niceDate()->format('Y-m-d H:i:s'),
+            $string
+        );
         $string = trim($string);
         if (!$string) {
             return;
@@ -1747,6 +1800,8 @@ abstract class FOGBase
      * Sets the order by element of sql.
      *
      * @param string $orderBy the string to order by
+     *
+     * @return void
      */
     public function orderBy(&$orderBy)
     {
@@ -2016,10 +2071,10 @@ abstract class FOGBase
                 $retVal
             );
         }
-        $sock = @fsockopen('ipinfo.io', 80);
-        if ($sock !== false) {
-            fclose($sock);
-            $res = self::$FOGURLRequests->process('http://ipinfo.io/ip', 'GET');
+        $test = self::$FOGURLRequests->isAvailable('http://ipinfo.io/ip');
+        $test = array_shift($test);
+        if (false !== $test) {
+            $res = self::$FOGURLRequests->process('http://ipinfo.io/ip');
             $IPs[] = $res[0];
         }
         natcasesort($IPs);
@@ -2087,6 +2142,8 @@ abstract class FOGBase
      * Perform enmass wake on lan.
      *
      * @param array $macs The macs to send
+     *
+     * @return void
      */
     public function wakeUp($macs)
     {
@@ -2139,7 +2196,7 @@ abstract class FOGBase
                 )
             );
             $ip = $Node->get('ip');
-            $testurl = sprintf(
+            $testurls[] = sprintf(
                 'http://%s%smanagement/index.php',
                 $ip,
                 $webroot
@@ -2184,18 +2241,24 @@ abstract class FOGBase
             )
         );
         $ip = $gHost;
-        $testurl = sprintf(
+        $testurls[] = sprintf(
             'http://%s%smanagement/index.php',
             $ip,
             $webroot
         );
+        $test = array_filter(self::$FOGURLRequests->isAvailable($testurls));
+        $nodeURLs = array_intersect_key($nodeURLs, $test);
         if (count($nodeURLs) < 1) {
             return;
         }
         self::$FOGURLRequests->process(
             $nodeURLs,
             'POST',
-            array('mac' => $macStr)
+            array('mac' => $macStr),
+            false,
+            false,
+            false,
+            false
         );
     }
 }

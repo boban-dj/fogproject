@@ -158,6 +158,7 @@ class MulticastManager extends FOGService
     private function _serviceLoop()
     {
         while (true) {
+            $this->waitDbReady();
             $queuedStates = array_merge(
                 $this->getQueuedStates(),
                 (array)$this->getProgressState()
@@ -460,7 +461,7 @@ class MulticastManager extends FOGService
                                 $KnownTasks,
                                 $curTask->getID()
                             );
-                            $taskIDs = $curTask->getTaskIDs();
+                            $taskIDs = $runningTask->getTaskIDs();
                             $inTaskCancelledIDs = self::getSubObjectIDs(
                                 'Task',
                                 array(
@@ -483,7 +484,7 @@ class MulticastManager extends FOGService
                                 ==
                                 $this->getCancelledState();
                             if ($SessCancelled
-                                || count($inTaskCancelledIDs) > 1
+                                || count($inTaskCancelledIDs) > 0
                             ) {
                                 $jobcancelled = true;
                             }
@@ -534,6 +535,7 @@ class MulticastManager extends FOGService
                                             _('has been cancelled')
                                         )
                                     );
+                                    $MultiSess->cancel();
                                 } else {
                                     $MultiSess
                                         ->set('clients', 0)
@@ -579,7 +581,7 @@ class MulticastManager extends FOGService
                     sprintf(
                         ' | %s %s %s.',
                         _('Wait time has changed to'),
-                        static::$zzz
+                        static::$zzz,
                         (
                             static::$zzz != 1 ?
                             _('seconds') :

@@ -239,6 +239,20 @@ abstract class FOGPage extends FOGBase
         global $node;
         global $sub;
         global $id;
+        if ($node !== 'service'
+            && preg_match('#edit#i', $sub)
+            && (!isset($id)
+            || !is_numeric($id)
+            || $id < 1)
+        ) {
+            $this->setMessage(
+                _('ID Must be set to edit')
+            );
+            $this->redirect(
+                "?node=$node"
+            );
+            exit;
+        }
         $subs = array(
             'configure',
             'authorize',
@@ -249,11 +263,13 @@ abstract class FOGPage extends FOGBase
         }
         $this->childClass = ucfirst($this->node);
         $ref = preg_match(
-            '#node=storage&sub=storage-group#i',
-            $_SERVER['HTTP_REFERER']
+            '#node=storage&sub=.*storageGroup#i',
+            self::$querystring
         );
         if ($ref) {
             $this->childClass .= 'Group';
+        } elseif ($node == 'storage') {
+            $this->childClass = 'StorageNode';
         }
         if (!empty($name)) {
             $this->name = $name;
@@ -436,31 +452,98 @@ abstract class FOGPage extends FOGBase
      */
     public function index()
     {
-        $vals = function (&$value, $key) {
-            return sprintf(
-                '%s : %s',
-                $key,
-                $value
+        $this->title = _('Search');
+        if (in_array($this->node, self::$searchPages)) {
+            $this->searchFormURL = sprintf('?node=%s&sub=search', $this->node);
+        }
+        if (in_array($this->node, self::$searchPages)) {
+            $this->title = sprintf(
+                '%s %s',
+                _('All'),
+                _("{$this->childClass}s")
             );
-        };
-        printf(
-            'Index page of: %s%s',
-            get_class($this),
-            (
-                count($args) ?
-                sprintf(
-                    ', Arguments = %s',
-                    implode(
-                        ', ',
-                        array_walk(
-                            $args,
-                            $vals
+            global $sub;
+            $manager = sprintf(
+                '%sManager',
+                $this->childClass
+            );
+            if ($sub != 'list') {
+                if ($_SESSION['DataReturn'] > 0) {
+                    $objCount = $this->getClass($manager)->count();
+                    if ($objCount > $_SESSION['DataReturn']) {
+                        $this->redirect(
+                            sprintf(
+                                '?node=%s&sub=search',
+                                $this->node
+                            )
+                        );
+                    }
+                }
+            }
+            $this->data = array();
+            $find = '';
+            if ('Host' === $this->childClass) {
+                $find = array(
+                    'pending' => array(0, '')
+                );
+            }
+            $Items = self::getClass($manager)->find($find);
+            array_walk($Items, static::$returnData);
+            unset($Items);
+            $event = sprintf(
+                '%s_DATA',
+                strtoupper($this->node)
+            );
+            self::$HookManager->processEvent(
+                $event,
+                array(
+                    'data' => &$this->data,
+                    'templates' => &$this->templates,
+                    'attributes' => &$this->attributes,
+                    'headerData' => &$this->headerData
+                )
+            );
+            $event = sprintf(
+                '%s_HEADER_DATA',
+                strtoupper($this->node)
+            );
+            self::$HookManager->processEvent(
+                $event,
+                array(
+                    'headerData' => &$this->headerData
+                )
+            );
+            $this->render();
+            unset(
+                $this->headerData,
+                $this->data,
+                $this->templates,
+                $this->attributes
+            );
+        } else {
+            $vals = function (&$value, $key) {
+                return sprintf(
+                    '%s : %s',
+                    $key,
+                    $value
+                );
+            };
+            printf(
+                'Index page of: %s%s',
+                get_class($this),
+                (
+                    count($args) ?
+                    sprintf(
+                        ', Arguments = %s',
+                        implode(
+                            ', ',
+                            array_walk($args, $vals)
                         )
-                    )
-                ) :
-                ''
-            )
-        );
+                    ) :
+                    ''
+                )
+            );
+        }
     }
     /**
      * Set's value to key
@@ -513,11 +596,90 @@ abstract class FOGPage extends FOGBase
     {
         try {
             unset($actionbox);
+            global $sub;
+            global $node;
             $defaultScreen = strtolower($_SESSION['FOG_VIEW_DEFAULT_SCREEN']);
             $defaultScreens = array(
                 'search',
                 'list'
             );
+            if (((!$sub
+                || in_array($sub, $defaultScreens)
+                || $sub === 'storageGroup')
+                && in_array($node, self::$searchPages)
+                && in_array($node, $this->PagesWithObjects))
+                && !self::$isMobile
+            ) {
+                if ($node == 'host') {
+                    $actionbox = sprintf(
+                        '<form method="post" action="%s" id="action-box">'
+                        . '<input type="hidden" name="hostIDArray" value="" '
+                        . 'autocomplete="off"/><p><label for="group_new">%s'
+                        . '</label><input type="text" name="group_new" '
+                        . 'id="group_new" autocomplete="off"/></p><p class="c">'
+                        . 'OR</p><p><label for="group">%s</label>%s</p>'
+                        . '<p class="c"><input type="submit" id="processgroup" '
+                        . 'value="%s"/></p></form>',
+                        sprintf(
+                            '?node=%s&sub=saveGroup',
+                            $node
+                        ),
+                        _('Create new group'),
+                        _('Add to group'),
+                        self::getClass('GroupManager')->buildSelectBox(),
+                        _('Process Group Changes')
+                    );
+                }
+                if ($node != 'task') {
+                    $actionbox .= sprintf(
+                        '<form method="post" class="c" id="action-boxdel" '
+                        . 'action="%s"><p>%s</p><input type="hidden" '
+                        . 'name="%sIDArray" value="" autocomplete="off"/>'
+                        . '<input type="submit" value="%s?"/></form>',
+                        sprintf(
+                            '?node=%s&sub=deletemulti',
+                            $node
+                        ),
+                        _('Delete all selected items'),
+                        strtolower($node),
+                        sprintf(
+                            _('Delete all selected %ss'),
+                            (
+                                strtolower($node) !== 'storage' ?
+                                strtolower($node) :
+                                (
+                                    $sub === 'storageGroup' ?
+                                    strtolower($node).' group' :
+                                    strtolower($node).' node'
+                                )
+                            )
+                        )
+                    );
+                }
+            }
+            self::$HookManager->processEvent(
+                'ACTIONBOX',
+                array('actionbox' => &$actionbox)
+            );
+            if (self::$ajax) {
+                echo json_encode(
+                    array(
+                        'data' => $this->data,
+                        'templates' => $this->templates,
+                        'headerData' => $this->headerData,
+                        'title' => $this->title,
+                        'attributes' => $this->attributes,
+                        'form' => $this->form,
+                        'searchFormURL' => $this->searchFormURL,
+                        'actionbox' => (
+                            count($this->data) > 0 ?
+                            $actionbox :
+                            ''
+                        ),
+                    )
+                );
+                exit;
+            }
             if (!count($this->templates)) {
                 throw new Exception(
                     _('Requires templates to process')
@@ -675,80 +837,7 @@ abstract class FOGPage extends FOGBase
                 }
             }
             echo '</tbody></table>';
-            if (((!$sub
-                || in_array($sub, $defaultScreens)
-                || $sub === 'storage-group')
-                && in_array($node, self::$searchPages)
-                && in_array($node, $this->PagesWithObjects))
-                && !self::$isMobile
-            ) {
-                if ($this->node == 'host') {
-                    $actionbox = sprintf(
-                        '<form method="post" action="%s" id="action-box">'
-                        . '<input type="hidden" name="hostIDArray" value="" '
-                        . 'autocomplete="off"/><p><label for="group_new">%s'
-                        . '</label><input type="text" name="group_new" '
-                        . 'id="group_new" autocomplete="off"/></p><p class="c">'
-                        . 'OR</p><p><label for="group">%s</label>%s</p>'
-                        . '<p class="c"><input type="submit" id="processgroup" '
-                        . 'value="%s"/></p></form>',
-                        sprintf(
-                            '?node=%s&sub=save_group',
-                            $this->node
-                        ),
-                        _('Create new group'),
-                        _('Add to group'),
-                        self::getClass('GroupManager')->buildSelectBox(),
-                        _('Process Group Changes')
-                    );
-                }
-                if ($this->node != 'task') {
-                    $actionbox .= sprintf(
-                        '<form method="post" class="c" id="action-boxdel" '
-                        . 'action="%s"><p>%s</p><input type="hidden" '
-                        . 'name="%sIDArray" value="" autocomplete="off"/>'
-                        . '<input type="submit" value="%s?"/></form>',
-                        sprintf(
-                            '?node=%s&sub=deletemulti',
-                            $this->node
-                        ),
-                        _('Delete all selected items'),
-                        strtolower($this->node),
-                        sprintf(
-                            _('Delete all selected %ss'),
-                            (
-                                strtolower($this->node) !== 'storage' ?
-                                strtolower($this->node) :
-                                (
-                                    $sub === 'storage_group' ?
-                                    strtolower($this->node).' group' :
-                                    strtolower($this->node).' node'
-                                )
-                            )
-                        )
-                    );
-                }
-            }
-            self::$HookManager->processEvent(
-                'ACTIONBOX',
-                array('actionbox' => &$actionbox)
-            );
             $text = ob_get_clean();
-            if (self::$ajax) {
-                echo json_encode(
-                    array(
-                        'data' => &$this->data,
-                        'templates' => &$this->templates,
-                        'headerData' => &$this->headerData,
-                        'title' => &$this->title,
-                        'attributes' => &$this->attributes,
-                        'form' => &$this->form,
-                        'searchFormURL' => &$this->searchFormURL,
-                        'actionbox' => &$actionbox,
-                    )
-                );
-                exit;
-            }
             $text .= $actionbox;
             return $text;
         } catch (Exception $e) {
@@ -844,24 +933,12 @@ abstract class FOGPage extends FOGBase
             $urlvars,
             (array)$data
         );
-        foreach ((array)$foundchanges[1] as &$arrayReplace) {
-            $this->dataFind[] = sprintf(
-                '#\$\{%s\}#',
-                $name
-            );
-            if (isset($arrayReplace[$name])) {
-                $this->dataReplace[] = $arrayReplace[$name];
-            } else {
-                $this->dataReplace[] = '';
-            }
-            unset($arrayReplace);
-        }
         foreach ((array)$arrayReplace as $name => &$val) {
             $this->dataFind[] = sprintf(
                 '#\$\{%s\}#',
                 $name
             );
-            if (isset($val)) {
+            if (!empty($val)) {
                 $this->dataReplace[] = str_replace('\\', '\\\\', $val);
             } else {
                 $this->dataReplace[] = '';
@@ -1634,7 +1711,7 @@ abstract class FOGPage extends FOGBase
                     '%s %s',
                     $this->childClass,
                     (
-                        $sub !== 'storage-group' ?
+                        $sub !== 'storageGroup' ?
                         'Node' :
                         'Group'
                     )
@@ -1825,8 +1902,7 @@ abstract class FOGPage extends FOGBase
             unset($TaskType);
         }
         $this->data[] = array(
-            'node' => $this
-            ->node,
+            'node' => $this->node,
             'sub' => 'edit',
             sprintf(
                 '%s_id',
@@ -2209,6 +2285,14 @@ abstract class FOGPage extends FOGBase
                             _('Error: Failed to open temp file')
                         );
                     }
+                    $test = self::$FOGURLRequests
+                        ->isAvailable($_SESSION['dl-kernel-file']);
+                    $test = array_shift($test);
+                    if (false === $test) {
+                        throw new Exception(
+                            _('Error: Failed to connect to server')
+                        );
+                    }
                     self::$FOGURLRequests->process(
                         $_SESSION['dl-kernel-file'],
                         'GET',
@@ -2316,22 +2400,13 @@ abstract class FOGPage extends FOGBase
      */
     public function loginInfo()
     {
-        $data = self::$FOGURLRequests->process(
-            array(
-                'http://fogproject.org/globalusers',
-                'http://fogproject.org/version/index.php?stable&dev&svn'
-            )
+        $urls = array(
+            'http://fogproject.org/globalusers',
+            'http://fogproject.org/version/index.php?stable&dev&svn'
         );
-        if (!$data[0]) {
-            $data['error-sites'] = _('Error contacting server');
-        } else {
-            $data['sites'] = $data[0];
-        }
-        if (!$data[1]) {
-            $data['error-version'] = _('Error contacting server');
-        } else {
-            $data['version'] = json_decode($data[1]);
-        }
+        $resp = self::$FOGURLRequests->process($urls);
+        $data['sites'] = $resp[0];
+        $data['version'] = $resp[1];
         echo json_encode($data);
         exit;
     }
@@ -2498,11 +2573,9 @@ abstract class FOGPage extends FOGBase
     /**
      * Authorizes the client with the server
      *
-     * @param mixed $json whether to use json
-     *
      * @return void
      */
-    public function authorize($json = false)
+    public function authorize()
     {
         try {
             $Host = $this->getHostItem(true);
@@ -2538,7 +2611,7 @@ abstract class FOGPage extends FOGBase
                 ->set('pub_key', $key)
                 ->set('sec_tok', $this->createSecToken())
                 ->save();
-            if ($json === true) {
+            if (self::$json === true) {
                 $vals['token'] = $Host->get('sec_tok');
                 printf(
                     '#!en=%s',
@@ -2557,11 +2630,11 @@ abstract class FOGPage extends FOGBase
                 )
             );
         } catch (Exception $e) {
-            if ($json === true) {
+            if (self::$json === true) {
                 if ($e->getMessage() == '#!ihc') {
                     die($e->getMessage());
                 }
-                $err = preg_replace('/%[#][!]?/', '', $e->getMessage());
+                $err = preg_replace('/^[#][!]?/', '', $e->getMessage());
                 echo json_encode(
                     array('error' => $err)
                 );
@@ -2581,11 +2654,6 @@ abstract class FOGPage extends FOGBase
      */
     public function requestClientInfo()
     {
-        if (!isset($_REQUEST['newService'])) {
-            print_r($this->getGlobalModuleStatus(false, true));
-            exit;
-        }
-        $this->newService = true;
         if (isset($_REQUEST['configure'])) {
             $Services = self::getSubObjectIDs(
                 'Service',
@@ -2646,7 +2714,7 @@ abstract class FOGPage extends FOGBase
                 false,
                 false,
                 false,
-                isset($_REQUEST['newService'])
+                self::$newService || self::$json
             );
             $hostModules = self::getSubObjectIDs(
                 'Module',
@@ -2664,24 +2732,24 @@ abstract class FOGPage extends FOGBase
             $array = array();
             foreach ($globalModules as $index => &$key) {
                 switch ($key) {
-                    case 'greenfog':
-                        $class='GF';
-                        continue 2;
-                    case 'powermanagement':
-                        $class='PM';
-                        break;
-                    case 'printermanager':
-                        $class='PrinterClient';
-                        break;
-                    case 'taskreboot':
-                        $class='Jobs';
-                        break;
-                    case 'usertracker':
-                        $class='UserTrack';
-                        break;
-                    default:
-                        $class=$key;
-                        break;
+                case 'greenfog':
+                    $class='GF';
+                    continue 2;
+                case 'powermanagement':
+                    $class='PM';
+                    break;
+                case 'printermanager':
+                    $class='PrinterClient';
+                    break;
+                case 'taskreboot':
+                    $class='Jobs';
+                    break;
+                case 'usertracker':
+                    $class='UserTrack';
+                    break;
+                default:
+                    $class=$key;
+                    break;
                 }
                 $disabled = in_array(
                     $key,
@@ -2703,12 +2771,12 @@ abstract class FOGPage extends FOGBase
                         false,
                         false,
                         false,
-                        isset($_REQUEST['newService'])
+                        self::$newService || self::$json
                     )->json();
                 }
                 unset($key);
             }
-            $this->sendData(json_encode($array), true);
+            $this->sendData(json_encode($array), true, $array);
             //echo json_encode($array);
         } catch (Exception $e) {
             echo $e->getMessage();
@@ -2815,7 +2883,7 @@ abstract class FOGPage extends FOGBase
                 }
                 if (isset($_REQUEST['massDelHosts'])) {
                     $this->redirect(
-                        "?node=group&sub=delete_hosts&id={$this->obj->get(id)}"
+                        "?node=group&sub=deletehosts&id={$this->obj->get(id)}"
                     );
                 }
             }
@@ -2898,6 +2966,51 @@ abstract class FOGPage extends FOGBase
             array('headerData' => &$this->headerData)
         );
         $this->render();
+    }
+    /**
+     * Search form submission
+     *
+     * @return void
+     */
+    public function searchPost()
+    {
+        $this->data = array();
+        $manager = sprintf(
+            '%sManager',
+            $this->childClass
+        );
+        $items = self::getClass($manager)->search('', true);
+        array_walk($items, static::$returnData);
+        $event = sprintf(
+            '%s_DATA',
+            strtoupper($this->node)
+        );
+        self::$HookManager->processEvent(
+            $event,
+            array(
+                'data' => &$this->data,
+                'templates' => &$this->templates,
+                'attributes' => &$this->attributes,
+                'headerData' => &$this->headerData
+            )
+        );
+        $event = sprintf(
+            '%s_HEADER_DATA',
+            strtoupper($this->node)
+        );
+        self::$HookManager->processEvent(
+            $event,
+            array(
+                'headerData' => &$this->headerData
+            )
+        );
+        $this->render();
+        unset(
+            $this->headerData,
+            $this->data,
+            $this->templates,
+            $this->attributes
+        );
     }
     /**
      * Presents the membership information
@@ -2986,9 +3099,9 @@ abstract class FOGPage extends FOGBase
             &$index
         ) use (&$ids) {
             $this->data[] = array(
-            'host_id'=>$ids[$index],
-            'host_name'=>$name,
-            'check_num'=>1,
+                'host_id'=>$ids[$index],
+                'host_name'=>$name,
+                'check_num'=>1,
             );
             unset(
                 $name,
@@ -3033,10 +3146,10 @@ abstract class FOGPage extends FOGBase
                 . 'value="%s %s(s) to %s" name="addHosts"/></p><br/>',
                 _('Add'),
                 (
-                        $objType ?
-                        _('Group') :
-                        _('Host')
-                    ),
+                    $objType ?
+                    _('Group') :
+                    _('Host')
+                ),
                 $this->node
             );
         }
@@ -3143,7 +3256,11 @@ abstract class FOGPage extends FOGBase
      */
     public function wakeEmUp()
     {
-        self::getClass('WakeOnLan', $_REQUEST['mac'])->send();
+        $macs = $this->parseMacList($_REQUEST['mac']);
+        if (count($macs) < 1) {
+            return;
+        }
+        self::getClass('WakeOnLan', implode('|', $macs))->send();
     }
     /**
      * Presents the relevant class items for export
@@ -3338,7 +3455,7 @@ abstract class FOGPage extends FOGBase
             );
             $fileinfo = pathinfo($_FILES['file']['name']);
             $ext = $fileinfo['extension'];
-            $Item = self::getClass($this->childClass);
+            $Item = new $this->childClass();
             $mime = $_FILES['file']['type'];
             if (!in_array($mime, $mimes)) {
                 if ($ext !== 'csv') {
@@ -3387,6 +3504,7 @@ abstract class FOGPage extends FOGBase
                     );
                 }
                 try {
+                    $dbkeys = array_keys($this->databaseFields);
                     if ($Item instanceof Host) {
                         $macs = $this->parseMacList($data[0]);
                         $Host = self::getClass('HostManager')
@@ -3399,7 +3517,6 @@ abstract class FOGPage extends FOGBase
                             );
                         }
                         $primac = array_shift($macs);
-                        $dbkeys = array_keys($this->databaseFields);
                         $index = array_search('productKey', $dbkeys) + 1;
                         $test_encryption = $this->aesdecrypt($data[$index]);
                         if ($test_base64 = base64_decode($data[$index])) {
@@ -3420,7 +3537,11 @@ abstract class FOGPage extends FOGBase
                     }
                     foreach ((array)$dbkeys as $ind => &$field) {
                         $ind += $iterator;
-                        $Item->set($field, $data[$ind], ($field == 'password'));
+                        if ($field == 'password') {
+                            $Item->set($field, $data[$ind], true);
+                        } else {
+                            $Item->set($field, $data[$ind]);
+                        }
                         unset($field);
                     }
                     if ($Item instanceof Host) {

@@ -5,24 +5,173 @@
  * PHP Version 5
  *
  * @category HostManager
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * Manager class for Hosts.
  *
  * @category HostManager
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 class HostManager extends FOGManagerController
 {
+    /**
+     * The base table name.
+     *
+     * @var string
+     */
+    public $tablename = 'hosts';
+    /**
+     * Install our table.
+     *
+     * @return bool
+     */
+    public function install()
+    {
+        $this->uninstall();
+        $sql = Schema::createTable(
+            $this->tablename,
+            true,
+            array(
+                'hostID',
+                'hostName',
+                'hostDesc',
+                'hostIP',
+                'hostImage',
+                'hostBuilding',
+                'hostCreateDate',
+                'hostCreateBy',
+                'hostLastDeploy',
+                'hostUseAD',
+                'hostADDomain',
+                'hostADOU',
+                'hostADUser',
+                'hostADPass',
+                'hostADPassLegacy',
+                'hostProductKey',
+                'hostPrinterLevel',
+                'hostKernelArgs',
+                'hostKernel',
+                'hostDevice',
+                'hostInit',
+                'hostPending',
+                'hostPubKey',
+                'hostSecToken',
+                'hostSecTime',
+                'hostPingCode',
+                'hostExitBios',
+                'hostExitEfi',
+                'hostEnforce',
+            ),
+            array(
+                'INTEGER',
+                'VARCHAR(16)',
+                'LONGTEXT',
+                'VARCHAR(25)',
+                'INTEGER',
+                'INTEGER',
+                'TIMESTAMP',
+                'VARCHAR(40)',
+                'DATETIME',
+                "ENUM('0', '1')",
+                'VARCHAR(255)',
+                'LONGTEXT',
+                'VARCHAR(255)',
+                'VARCHAR(255)',
+                'LONGTEXT',
+                'LONGTEXT',
+                'VARCHAR(2)',
+                'VARCHAR(255)',
+                'VARCHAR(255)',
+                'VARCHAR(255)',
+                'LONGTEXT',
+                "ENUM('0', '1')",
+                'LONGTEXT',
+                'LONGTEXT',
+                'TIMESTAMP',
+                'VARCHAR(20)',
+                'LONGTEXT',
+                'LONGTEXT',
+                "ENUM('0', '1')"
+            ),
+            array(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            ),
+            array(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                'CURRENT_TIMESTAMP',
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                '0000-00-00 00:00:00',
+                false,
+                false,
+                false,
+                '1'
+            ),
+            array(
+                'hostID',
+                'hostName'
+            ),
+            'MyISAM',
+            'utf8',
+            'hostID',
+            'hostID'
+        );
+    }
     /**
      * Returns a single host object based on the passed MACs.
      *
@@ -37,11 +186,7 @@ class HostManager extends FOGManagerController
         $MACHost = self::getSubObjectIDs(
             'MACAddressAssociation',
             array(
-                'pending' => array(
-                    0,
-                    '',
-                    null,
-                ),
+                'pending' => array(0, ''),
                 'mac' => $macs,
             ),
             'hostID'

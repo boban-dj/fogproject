@@ -164,7 +164,10 @@ class BootMenu extends FOGBase
             'refind_efi' => $refind,
             'exit' => 'exit',
         );
-        list($webserver, $curroot) = self::getSubObjectIDs(
+        list(
+            $webserver,
+            $curroot
+        ) = self::getSubObjectIDs(
             'Service',
             array(
                 'name' => array(
@@ -899,8 +902,37 @@ class BootMenu extends FOGBase
             $Image = $mc->getImage();
             $TaskType = new TaskType(8);
         }
+        $serviceNames = array(
+            'FOG_DISABLE_CHKDSK',
+            'FOG_KERNEL_ARGS',
+            'FOG_KERNEL_DEBUG',
+            'FOG_MINING_ENABLE',
+            'FOG_MINING_MAX_CORES',
+            'FOG_MINING_PACKAGE_PATH',
+            'FOG_NONREG_DEVICE'
+        );
+        list(
+            $chkdsk,
+            $kargs,
+            $kdebug,
+            $miningen,
+            $miningcr,
+            $miningpp,
+            $nondev
+        ) = self::getSubObjectIDs(
+            'Service',
+            array(
+                'name' => $serviceNames
+            ),
+            'value',
+            false,
+            'AND',
+            'name',
+            false,
+            ''
+        );
         $StorageGroup = $Image->getStorageGroup();
-        $StorageNode = $StorageGroup->getOptimalStorageNode($Image->get('id'));
+        $StorageNode = $StorageGroup->getOptimalStorageNode();
         $osid = $Image->get('osID');
         $storage = escapeshellcmd(
             sprintf(
@@ -916,7 +948,7 @@ class BootMenu extends FOGBase
         $imgType = $Image->getImageType()->get('type');
         $imgPartitionType = $Image->getPartitionType();
         $imgid = $Image->get('id');
-        $chkdsk = self::getSetting('FOG_DISABLE_CHKDSK') == 1 ? 0 : 1;
+        $chkdsk = $chkdsk == 1 ? 0 : 1;
         $ftp = $StorageNode->get('ip');
         $port = ($mc ? $mc->get('port') : null);
         $kernelArgsArray = array(
@@ -942,36 +974,23 @@ class BootMenu extends FOGBase
                 'active' => $mc,
             ),
             array(
-                'value' => vsprintf(
+                'value' => sprintf(
                     'mining=1 miningcores=%s miningpath=%s',
-                    self::getSubObjectIDs(
-                        'Service',
-                        array(
-                            'name' => array(
-                                'FOG_MINING_MAX_CORES',
-                                'FOG_MINING_PACKAGE_PATH'
-                            )
-                        ),
-                        'value',
-                        false,
-                        'AND',
-                        'name',
-                        false,
-                        ''
-                    )
+                    $miningcr,
+                    $miningpp
                 ),
-                'active' => self::getSetting('FOG_MINING_ENABLE'),
+                'active' => $miningen,
             ),
             array(
                 'value' => 'debug',
-                'active' => self::getSetting('FOG_KERNEL_DEBUG'),
+                'active' => $kdebug,
             ),
             array(
-                'value' => 'fdrive='.self::getSetting('FOG_NONREG_DEVICE'),
-                'active' => self::getSetting('FOG_NONREG_DEVICE'),
+                'value' => 'fdrive='.$nondev,
+                'active' => $nondev,
             ),
             $TaskType->get('kernelArgs'),
-            self::getSetting('FOG_KERNEL_ARGS'),
+            $kargs
         );
         $this->_printTasking($kernelArgsArray);
     }
@@ -1099,7 +1118,9 @@ class BootMenu extends FOGBase
         $msImage = $MultiSess->getImage()->get('id');
         $h_Image = $this->_Host->getImage()->get('id');
         if ($msImage != $h_Image) {
-            $this->_Host->set('imageID', $MultiSess->getImage()->get('id'));
+            $this->_Host
+                ->set('imagename', $MultiSess->getImage())
+                ->set('imageID', $msImage);
         }
         $shutdown = stripos('shutdown=1', $_SESSION['extraargs']);
         $isdebug = preg_match(
@@ -1259,6 +1280,8 @@ class BootMenu extends FOGBase
             } else {
                 $this->printDefault();
             }
+            self::$HookManager
+                ->processEvent('ALTERNATE_LOGIN_BOOT_MENU_PARAMS');
         } else {
             $Send['invalidlogin'] = array(
                 "echo Invalid login!",
@@ -1293,7 +1316,9 @@ class BootMenu extends FOGBase
             return;
         }
         if ($this->_Host->getImage()->get('id') != $imgID) {
-            $this->_Host->set('imageID', $imgID);
+            $this->_Host
+                ->set('imageID', $imgID)
+                ->set('imagename', new Image($imgID));
         }
         if (!$this->_Host->getImage()->isValid()) {
             return;
@@ -1345,7 +1370,7 @@ class BootMenu extends FOGBase
             if ($this->_Host->get('mac')->isImageIgnored()) {
                 $this->_printImageIgnored();
             }
-            $TaskType = new TaskType($Task->get('typeID'));
+            $TaskType = $Task->getTaskType();
             $imagingTasks = $TaskType->isImagingTask();
             if ($TaskType->isMulticast()) {
                 $msaID = @max(
@@ -1378,12 +1403,9 @@ class BootMenu extends FOGBase
                     $StorageGroup = $Image->getStorageGroup();
                 }
                 if (!$StorageNode || !$StorageNode->isValid()) {
-                    $StorageNode = $StorageGroup->getOptimalStorageNode(
-                        $Image->get('id')
-                    );
+                    $StorageNode = $StorageGroup->getOptimalStorageNode();
                 }
                 if ($Task->isCapture()) {
-                    $StorageGroup = $Image->getStorageGroup();
                     $StorageNode = $StorageGroup->getMasterStorageNode();
                 }
                 if ($Task->get('storagenodeID') != $StorageNode->get('id')) {
@@ -1410,7 +1432,43 @@ class BootMenu extends FOGBase
                 $imgFormat = '';
                 $imgType = '';
                 $imgPartitionType = '';
-                $globalPIGZ = self::getSetting('FOG_PIGZ_COMP');
+                $serviceNames = array(
+                    'FOG_CAPTUREIGNOREPAGEHIBER',
+                    'FOG_CAPTURERESIZEPCT',
+                    'FOG_CHANGE_HOSTNAME_EARLY',
+                    'FOG_DISABLE_CHKDSK',
+                    'FOG_KERNEL_ARGS',
+                    'FOG_KERNEL_DEBUG',
+                    'FOG_MINING_ENABLE',
+                    'FOG_PIGZ_COMP',
+                    'FOG_TFTP_HOST',
+                    'FOG_WIPE_TIMEOUT'
+                );
+                list(
+                    $cappage,
+                    $capresz,
+                    $hosterl,
+                    $chkdsk,
+                    $kargs,
+                    $kdebug,
+                    $mining,
+                    $pigz,
+                    $tftp,
+                    $timeout
+                ) = self::getSubObjectIDs(
+                    'Service',
+                    array(
+                        'name' => $serviceNames
+                    ),
+                    'value',
+                    false,
+                    'AND',
+                    'name',
+                    false,
+                    ''
+                );
+
+                $globalPIGZ = $pigz;
                 $PIGZ_COMP = $globalPIGZ;
                 if ($StorageNode instanceof StorageNode && $StorageNode->isValid()) {
                     $ip = trim($StorageNode->get('ip'));
@@ -1426,7 +1484,7 @@ class BootMenu extends FOGBase
                         sprintf(
                             '%s:/%s/%s',
                             $ip,
-                            $StorageNode->get('path'),
+                            trim($StorageNode->get('path'), '/'),
                             (
                                 $TaskType->isCapture() ?
                                 'dev/' :
@@ -1444,8 +1502,7 @@ class BootMenu extends FOGBase
                         ->getImageType()
                         ->get('type');
                     $imgPartitionType = $Image
-                        ->getImagePartitionType()
-                        ->get('type');
+                        ->getPartitionType();
                     $imgid = $Image
                         ->get('id');
                     $image_PIGZ = $Image->get('compress');
@@ -1470,9 +1527,9 @@ class BootMenu extends FOGBase
             if ($StorageNode instanceof StorageNode && $StorageNode->isValid()) {
                 $ftp = $ip;
             } else {
-                $ftp = self::getSetting('FOG_TFTP_HOST');
+                $ftp = $tftp;
             }
-            $chkdsk = self::getSetting('FOG_DISABLE_CHKDSK') == 1 ? 0 : 1;
+            $chkdsk = $chkdsk == 1 ? 0 : 1;
             $MACs = $this->_Host->getMyMacs();
             $clientMacs = array_filter(
                 (array)$this->parseMacList(
@@ -1486,7 +1543,7 @@ class BootMenu extends FOGBase
             );
             if ($this->_Host->get('useAD')) {
                 $addomain = preg_replace(
-                    '#\ #',
+                    '#\s#',
                     '+_+',
                     $this->_Host->get('ADDomain')
                 );
@@ -1494,18 +1551,18 @@ class BootMenu extends FOGBase
                     ';',
                     '',
                     preg_replace(
-                        '#\ #',
+                        '#\s#',
                         '+_+',
                         $this->_Host->get('ADOU')
                     )
                 );
                 $aduser = preg_replace(
-                    '#\ #',
+                    '#\s#',
                     '+_+',
                     $this->_Host->get('ADUser')
                 );
                 $adpass = preg_replace(
-                    '#\ #',
+                    '#\s#',
                     '+_+',
                     $this->_Host->get('ADPass')
                 );
@@ -1571,7 +1628,7 @@ class BootMenu extends FOGBase
                 array(
                     'value' => 'hostearly=1',
                     'active' => (
-                        self::getSetting('FOG_CHANGE_HOSTNAME_EARLY')
+                        $hosterl
                         && $imagingTasks ?
                         true :
                         false
@@ -1581,10 +1638,10 @@ class BootMenu extends FOGBase
                     'value' => sprintf(
                         'pct=%d',
                         (
-                            is_numeric(self::getSetting('FOG_CAPTURERESIZEPCT'))
-                            && self::getSetting('FOG_CAPTURERESIZEPCT') >= 5
-                            && self::getSetting('FOG_CAPTURERESIZEPCT') < 100 ?
-                            self::getSetting('FOG_CAPTURERESIZEPCT') :
+                            is_numeric($capresz)
+                            && $capresz >= 5
+                            && $capresz < 100 ?
+                            $capresz :
                             '5'
                         )
                     ),
@@ -1594,7 +1651,7 @@ class BootMenu extends FOGBase
                     'value' => sprintf(
                         'ignorepg=%d',
                         (
-                            self::getSetting('FOG_CAPTUREIGNOREPAGEHIBER') ?
+                            $cappage ?
                             1 :
                             0
                         )
@@ -1631,7 +1688,7 @@ class BootMenu extends FOGBase
                             ''
                         )
                     ),
-                    'active' => self::getSetting('FOG_MINING_ENABLE'),
+                    'active' => $mining,
                 ),
                 array(
                     'value' => sprintf(
@@ -1646,14 +1703,14 @@ class BootMenu extends FOGBase
                 ),
                 array(
                     'value' => 'debug',
-                    'active' => self::getSetting('FOG_KERNEL_DEBUG'),
+                    'active' => $kdebug,
                 ),
                 array(
-                    'value' => 'seconds='.self::getSetting('FOG_WIPE_TIMEOUT'),
+                    'value' => 'seconds='.$timeout,
                     'active' => in_array($TaskType->get('id'), range(18, 20)),
                 ),
                 $TaskType->get('kernelArgs'),
-                self::getSetting('FOG_KERNEL_ARGS'),
+                $kargs,
                 $this->_Host->get('kernelArgs'),
             );
             if ($Task->get('typeID') == 4) {
@@ -1720,31 +1777,31 @@ class BootMenu extends FOGBase
             $Send = array_merge($Send, array($params));
         }
         switch ($option->get('id')) {
-            case 1:
-                $Send = array_merge(
-                    $Send,
-                    array("$this->_bootexittype || goto MENU")
-                );
-                break;
-            case 2:
-                $Send = array_merge(
-                    $Send,
-                    array(
+        case 1:
+            $Send = array_merge(
+                $Send,
+                array("$this->_bootexittype || goto MENU")
+            );
+            break;
+        case 2:
+            $Send = array_merge(
+                $Send,
+                array(
                     "$this->_memdisk iso raw",
                     $this->_memtest,
                     'boot || goto MENU'
-                    )
-                );
-                break;
-            case 11:
-                $Send = array_merge(
-                    $Send,
-                    array(
+                )
+            );
+            break;
+        case 11:
+            $Send = array_merge(
+                $Send,
+                array(
                     "chain -ar $this->_booturl/ipxe/advanced.php || "
                     . "goto MENU"
-                    )
-                );
-                break;
+                )
+            );
+            break;
         }
         if (!$params) {
             $Send = array_merge(
@@ -1765,7 +1822,9 @@ class BootMenu extends FOGBase
      */
     public function printDefault()
     {
-        if ($this->_Host->isValid() && self::getSetting('FOG_NO_MENU')) {
+        if ($this->_Host->isValid()
+            && self::getSetting('FOG_NO_MENU')
+        ) {
             $this->noMenu();
         }
         if ($this->_hiddenmenu) {

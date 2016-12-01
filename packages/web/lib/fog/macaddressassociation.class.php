@@ -52,6 +52,14 @@ class MACAddressAssociation extends FOGController
         'mac',
     );
     /**
+     * Additional fields
+     *
+     * @var array
+     */
+    protected $additionalFields = array(
+        'host'
+    );
+    /**
      * Returns the host associated
      *
      * @return object
@@ -94,6 +102,7 @@ class MACAddressAssociation extends FOGController
      */
     public function isPrimary()
     {
-        return (bool)$this->get('primary') && !$this->get('pending');
+        return (bool)$this->get('primary')
+            && !$this->get('pending');
     }
 }

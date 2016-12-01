@@ -5,20 +5,18 @@
  * PHP version 5
  *
  * @category WakeOnLan
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * Wake on lan management class.
  *
  * @category WakeOnLan
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 class WakeOnLan extends FOGBase
@@ -47,10 +45,14 @@ class WakeOnLan extends FOGBase
     }
     /**
      * Send the requests.
+     *
+     * @return void
      */
     public function send()
     {
-        if (self::$_arrMAC === false || !count(self::$_arrMAC)) {
+        if (self::$_arrMAC === false
+            || count(self::$_arrMAC) < 0
+        ) {
             throw new Exception(self::$foglang['InvalidMAC']);
         }
         $BroadCast = array_merge(

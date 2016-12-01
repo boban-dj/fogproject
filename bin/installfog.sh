@@ -28,6 +28,7 @@ help() {
     echo -e "\t\t[-W <webroot/to/fog/after/docroot/>] [-B </backup/path/>]"
     echo -e "\t\t[-s <192.168.1.10>] [-e <192.168.1.254>] [-b <undionly.kpxe>]"
     echo -e "\t-h -? --help\t\t\tDisplay this info"
+    echo -e "\t-o    --oldcopy\t\t\tCopy back old data"
     echo -e "\t-d    --no-defaults\t\tDon't guess defaults"
     echo -e "\t-U    --no-upgrade\t\tDon't attempt to upgrade"
     echo -e "\t-H    --no-htmldoc\t\tNo htmldoc, means no PDFs"
@@ -55,7 +56,7 @@ help() {
     echo -e "\t-P    --no-pxedefault\t\tDo not overwrite pxe default file"
     exit 0
 }
-optspec="h?dEUHSCKYyXxTPf:c:-:W:D:B:s:e:b:"
+optspec="h?odEUHSCKYyXxTPf:c:-:W:D:B:s:e:b:"
 while getopts "$optspec" o; do
     case $o in
         -)
@@ -100,6 +101,9 @@ while getopts "$optspec" o; do
                     docroot="${docroot#'/'}"
                     docroot="${docroot%'/'}"
                     docroot="/${docroot}/"
+                    ;;
+                oldcopy)
+                    copybackold=1
                     ;;
                 webroot)
                     if [[ $OPTARG != *('/')* ]]; then
@@ -171,6 +175,9 @@ while getopts "$optspec" o; do
         h|'?')
             help
             exit 0
+            ;;
+        o)
+            copybackold=1
             ;;
         c)
             sslpath="${OPTARG}"
@@ -323,9 +330,6 @@ if [[ ! $exitcode -eq 0 ]]; then
 fi
 [[ -z $OSVersion ]] && OSVersion=$(lsb_release -r| awk -F'[^0-9]*' /^[Rr]elease\([^.]*\).*/'{print $2}')
 echo "Done"
-command -v systemctl >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-exitcode=$?
-[[ $exitcode -eq 0 ]] && systemctl="yes"
 . ../lib/common/config.sh
 [[ -z $dnsaddress ]] && dnsaddress=""
 [[ -z $username ]] && username=""
@@ -481,6 +485,11 @@ while [[ -z $blGo ]]; do
                 done
                 packages="$(echo $newpackagelist)"
             fi
+            case $installtype in
+                [Ss])
+                    packages=$(echo $packages | sed -e 's/[-a-zA-Z]*dhcp[-a-zA-Z]*//g')
+                    ;;
+            esac
             installPackages
             echo
             echo " * Confirming package installation"
@@ -510,7 +519,6 @@ while [[ -z $blGo ]]; do
             configureUsers
             case $installtype in
                 [Ss])
-                    packages=$(echo $packages | sed -e 's/[a-zA-Z-]*dhcp[-a-zA-Z]*//g' -e 's/[a-zA-Z-]*mysql[-a-zA-Z]*//g')
                     backupReports
                     configureMinHttpd
                     configureStorage

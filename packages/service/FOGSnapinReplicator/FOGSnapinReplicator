@@ -12,7 +12,7 @@
  * @link     https://fogproject.org
  */
 /**
- * FOGImageReplicator service to replicate snapins in FOG
+ * FOGSnapinReplicator service to replicate snapins in FOG
  *
  * @category FOGSnapinReplicator
  * @package  FOGProject
@@ -23,7 +23,7 @@
 @error_reporting(0);
 require dirname(realpath(__FILE__)).'/../etc/config.php';
 require dirname(realpath(__FILE__)).'/../lib/service_lib.php';
-$service_name = 'FOGImageReplicator';
+$service_name = 'FOGSnapinReplicator';
 service_persist($service_name);
 $ServiceClass = $FOGCore::getClass('SnapinReplicator');
 $ServiceClass->getBanner();

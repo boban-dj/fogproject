@@ -2,23 +2,27 @@
 /**
  * The base class of pushbullet elements
  *
+ * Extends the pushbullet elements into the event class.
+ *
  * PHP version 5
  *
  * @category PushbulletExtends
  * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @author   Joe Schmitt <jbob182@gmail.com>
- * @license  http://opensource.org/gpl-3.0 GPLv3
+ * @license  http://opensource.org/license/gpl-3.0 GPLv3
  * @link     https://fogproject.org
  */
 /**
  * The base class of pushbullet elements
  *
+ * Extends the pushbullet elements into the event class.
+ *
  * @category PushbulletExtends
  * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @author   Joe Schmitt <jbob182@gmail.com>
- * @license  http://opensource.org/gpl-3.0 GPLv3
+ * @license  http://opensource.org/license/gpl-3.0 GPLv3
  * @link     https://fogproject.org
  */
 abstract class PushbulletExtends extends Event

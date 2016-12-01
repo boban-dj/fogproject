@@ -45,7 +45,7 @@ case $linuxReleaseName in
             [[ -z $packageinstaller ]] && packageinstaller="yum -y --enablerepo=$repos install"
             [[ -z $packagelist ]] && packagelist="yum --enablerepo=$repos list"
             [[ -z $packageupdater ]] && packageupdater="yum -y --enablerepo=$repos update"
-            [[ -z $packmanUpdate ]] && packmanUpdate="yum check-update"
+            [[ -z $packmanUpdate ]] && packmanUpdate="yum -y --enablerepo=$repos check-update"
             command -v yum-config-manager >/dev/null 2>&1
             [[ ! $? -eq 0 ]] && $packageinstaller yum-utils >/dev/null 2>&1
             command -v yum-config-manager >/dev/null 2>&1
@@ -55,25 +55,6 @@ case $linuxReleaseName in
         ;;
 esac
 [[ -z $langPackages ]] && langPackages="iso-codes"
-if [[ $systemctl == yes ]]; then
-    if [[ -e /usr/lib/systemd/system/mariadb.service ]]; then
-        ln -s /usr/lib/systemd/system/mariadb.service /usr/lib/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /usr/lib/systemd/system/mariadb.service /usr/lib/systemd/system/mysqld.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /usr/lib/systemd/system/mariadb.service /etc/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /usr/lib/systemd/system/mariadb.service /etc/systemd/system/mysqld.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    elif [[ -e /usr/lib/systemd/system/mysqld.service ]]; then
-        ln -s /usr/lib/systemd/system/mysqld.service /usr/lib/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        ln -s /usr/lib/systemd/system/mysqld.service /etc/systemd/system/mysql.service >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    fi
-else
-    initdpath="/etc/rc.d/init.d"
-    initdsrc="../packages/init.d/redhat"
-    initdMCfullname="FOGMulticastManager"
-    initdIRfullname="FOGImageReplicator"
-    initdSDfullname="FOGScheduler"
-    initdSRfullname="FOGSnapinReplicator"
-    initdPHfullname="FOGPingHosts"
-fi
 if [[ -z $webdirdest ]]; then
     if [[ -z $docroot ]]; then
         docroot="/var/www/html/"

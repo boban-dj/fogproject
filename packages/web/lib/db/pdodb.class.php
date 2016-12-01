@@ -61,7 +61,7 @@ class PDODB extends DatabaseManager
      * @var array
      */
     private static $_options = array(
-        PDO::ATTR_PERSISTENT => true,
+        PDO::ATTR_PERSISTENT => false,
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_EMULATE_PREPARES => true
@@ -86,7 +86,9 @@ class PDODB extends DatabaseManager
             }
             self::$_dbName = DATABASE_NAME;
             if (!$this->_connect()) {
-                throw new PDOException(_('Failed to connect'));
+                throw new PDOException(
+                    _('Failed to connect')
+                );
             }
         } catch (PDOException $e) {
             $msg = sprintf(
@@ -117,14 +119,15 @@ class PDODB extends DatabaseManager
      * Connects the database as needed.
      *
      * @param bool $dbexists does db exist
+     * @param bool $always   always test connection.
      *
      * @throws PDOException
      * @return object
      */
-    private function _connect($dbexists = true)
+    private function _connect($dbexists = true, $always = false)
     {
         try {
-            if (self::$_link) {
+            if (self::$_link && !$always) {
                 return $this;
             }
             $type = DATABASE_TYPE;
@@ -150,7 +153,7 @@ class PDODB extends DatabaseManager
                 $pass,
                 self::$_options
             );
-            if (!self::currentDb($this)) {
+            if (self::$_link && !self::currentDb($this)) {
                 if (preg_match('#schema#', self::$querystring)) {
                     self::redirect('?node=schema');
                 }
@@ -158,6 +161,7 @@ class PDODB extends DatabaseManager
             self::query("SET SESSION sql_mode=''");
         } catch (PDOException $e) {
             if ($dbexists) {
+                self::$_link = false;
                 $this->_connect(false);
             } else {
                 $msg = sprintf(
@@ -183,7 +187,9 @@ class PDODB extends DatabaseManager
     {
         try {
             if (!self::$_link) {
-                throw new PDOException(_('No link established to the database'));
+                throw new PDOException(
+                    _('No link established to the database')
+                );
             }
             if (!isset(self::$_dbName) || !self::$_dbName) {
                 self::$_dbName = DATABASE_NAME;
@@ -235,7 +241,9 @@ class PDODB extends DatabaseManager
                 $sql = vsprintf($sql, $data);
             }
             if (!$sql) {
-                throw new PDOException(_('No query passed'));
+                throw new PDOException(
+                    _('No query passed')
+                );
             }
             self::$_query = $sql;
             self::_prepare();
@@ -245,7 +253,9 @@ class PDODB extends DatabaseManager
                 self::currentDb($this);
             }
             if (!self::$_dbName) {
-                throw new PDOException(_('No database to work off'));
+                throw new PDOException(
+                    _('No database to work off')
+                );
             }
         } catch (PDOException $e) {
             $msg = sprintf(
@@ -291,7 +301,9 @@ class PDODB extends DatabaseManager
             if (is_bool(self::$_queryResult)) {
                 self::$_result = self::$_queryResult;
             } elseif (empty(self::$_queryResult)) {
-                throw new PDOException(_('No query result, use query() first'));
+                throw new PDOException(
+                    _('No query result, use query() first')
+                );
             } else {
                 $fetchType = strtolower($fetchType);
                 if ($fetchType === 'fetch_all') {
@@ -324,10 +336,14 @@ class PDODB extends DatabaseManager
     {
         try {
             if (!self::$_link) {
-                throw new Exception(_('No connection to the database'));
+                throw new Exception(
+                    _('No connection to the database')
+                );
             }
             if (self::$_result === false) {
-                throw new Exception(_('No data returned'));
+                throw new Exception(
+                    _('No data returned')
+                );
             }
             if (self::$_result === true) {
                 return self::$_result;
@@ -389,6 +405,7 @@ class PDODB extends DatabaseManager
             }
         } else {
             $msg = _('Cannot connect to database');
+            self::$_link = false;
         }
         return $msg;
     }
@@ -489,6 +506,7 @@ class PDODB extends DatabaseManager
      */
     public function link()
     {
+        $this->_connect(true, true);
         return self::$_link;
     }
     /**

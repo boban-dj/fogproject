@@ -5,24 +5,93 @@
  * PHP version 5
  *
  * @category PowerManagementManager
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 /**
  * Powermanagement manager mass management class.
  *
  * @category PowerManagementManager
- *
+ * @package  FOGProject
  * @author   Tom Elliott <tommygunsster@gmail.com>
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
- *
  * @link     https://fogproject.org
  */
 class PowerManagementManager extends FOGManagerController
 {
+    /**
+     * The base table name.
+     *
+     * @var string
+     */
+    public $tablename = 'powerManagement';
+    /**
+     * Install our table.
+     *
+     * @return bool
+     */
+    public function install()
+    {
+        $this->uninstall();
+        $sql = Schema::createTable(
+            $this->tablename,
+            true,
+            array(
+                'pmID',
+                'pmHostID',
+                'pmMin',
+                'pmHour',
+                'pmDom',
+                'pmMonth',
+                'pmDow',
+                'pmAction',
+                'pmOndemand'
+            ),
+            array(
+                'INTEGER',
+                'INTEGER',
+                'VARCHAR(255)',
+                'VARCHAR(255)',
+                'VARCHAR(255)',
+                'VARCHAR(255)',
+                'VARCHAR(255)',
+                "ENUM('shutdown', 'reboot', 'wol')",
+                "ENUM('0', '1')"
+            ),
+            array(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            ),
+            array(
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+            ),
+            array(
+                'pmID',
+            ),
+            'MyISAM',
+            'utf8',
+            'pmID',
+            'pmID'
+        );
+        return self::$DB->query($sql);
+    }
     /**
      * Gets the predefined actions.
      *
@@ -40,7 +109,10 @@ class PowerManagementManager extends FOGManagerController
             'reboot' => _('Reboot'),
             'wol' => _('Wake On Lan'),
         );
-        self::$HookManager->processEvent('PM_ACTION_TYPES', array('types' => &$types));
+        self::$HookManager->processEvent(
+            'PM_ACTION_TYPES',
+            array('types' => &$types)
+        );
         ob_start();
         foreach ((array) $types as $val => &$text) {
             printf(

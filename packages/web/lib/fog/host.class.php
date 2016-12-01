@@ -116,6 +116,21 @@ class Host extends FOGController
             'imageID',
             'imagename'
         ),
+        'HostScreenSettings' => array(
+            'hostID',
+            'id',
+            'hostscreen'
+        ),
+        'HostAutoLogout' => array(
+            'hostID',
+            'id',
+            'hostalo'
+        ),
+        'Inventory' => array(
+            'hostID',
+            'id',
+            'inventory'
+        )
     );
     /**
      * Display val storage
@@ -1045,51 +1060,6 @@ class Host extends FOGController
         unset($find);
     }
     /**
-     * Loads the inventory for this host
-     *
-     * @return void
-     */
-    protected function loadInventory()
-    {
-        $inventory = self::getClass('Inventory')
-            ->set('hostID', $this->get('id'))
-            ->load('hostID');
-        $this->set('inventory', $inventory);
-    }
-    /**
-     * Loads the image object
-     *
-     * @return void
-     */
-    protected function loadImagename()
-    {
-        $this->set('imagename', new Image($this->get('imageID')));
-    }
-    /**
-     * Loads the hostscreen for this host
-     *
-     * @return void
-     */
-    protected function loadHostscreen()
-    {
-        $hostscreen = self::getClass('HostScreenSettings')
-            ->set('hostID', $this->get('id'))
-            ->load('hostID');
-        $this->set('hostscreen', $hostscreen);
-    }
-    /**
-     * Loads the hostalo for this host
-     *
-     * @return void
-     */
-    protected function loadHostalo()
-    {
-        $hostalo = self::getClass('HostAutoLogout')
-            ->set('hostID', $this->get('id'))
-            ->load('hostID');
-        $this->set('hostalo', $hostalo);
-    }
-    /**
      * Loads the optimal storage node
      *
      * @return void
@@ -1099,7 +1069,7 @@ class Host extends FOGController
         $node = $this
             ->getImage()
             ->getStorageGroup()
-            ->getOptimalStorageNode($this->get('imageID'));
+            ->getOptimalStorageNode();
         $this->set('optimalStorageNode', $node);
     }
     /**
@@ -1138,6 +1108,7 @@ class Host extends FOGController
      */
     public function checkIfExist($taskTypeID)
     {
+        return true;
         $TaskType = new TaskType($taskTypeID);
         $isCapture = $TaskType->isCapture();
         if ($isCapture) {
@@ -1157,20 +1128,37 @@ class Host extends FOGController
         if (!$StorageGroup || !$StorageGroup->isValid()) {
             $StorageGroupIDs = self::getSubObjectIDs(
                 'ImageAssociation',
-                array('imageID' => $this->get('imageID')),
+                array('imageID' => $this->getImage()->get('id')),
                 'storagegroupID'
             );
         } else {
             $StorageGroupIDs = $StorageGroup->get('id');
         }
         if (!$StorageNode || !$StorageNode->isValid()) {
-            $StorageNodes = self::getClass('StorageNodeManager')
-                ->find(
-                    array(
-                        'storagegroupID' => $StorageGroupIDs,
-                        'isEnabled' => 1
-                    )
-                );
+            if (!$StorageGroup || !$StorageGroup->isValid()) {
+                $Groups = self::getClass('StorageGroupManager')
+                    ->find(array('id' => $StorageGroupIDs));
+                $ennodeids = array();
+                foreach ((array)$Groups as &$Group) {
+                    if (!$Group->isValid()) {
+                        continue;
+                    }
+                    $ennodeids = array_merge(
+                        (array)$ennodeids,
+                        (array)$Group->get('enablednodes')
+                    );
+                    unset($Group);
+                }
+                $StorageNodes = self::getClass('StorageNodeManager')
+                    ->find(
+                        array('id' => $ennodeids)
+                    );
+            } else {
+                $StorageNodes = self::getClass('StorageNodeManager')
+                    ->find(
+                        array('id' => $StorageGroup->get('enablednodes'))
+                    );
+            }
         } else {
             $StorageNodes = array($StorageNode);
         }
@@ -1180,13 +1168,14 @@ class Host extends FOGController
                 continue;
             }
             $hasImageIDs = array_merge(
-                $hasImageIDs,
-                $StorageNode->get('images')
+                (array)$hasImageIDs,
+                (array)$StorageNode->get('images')
             );
             unset($StorageNode);
         }
         $hasImageIDs = array_unique($hasImageIDs);
-        if (!in_array($this->get('imageID'), $hasImageIDs)) {
+        $hasImageIDs = array_filter($hasImageIDs);
+        if (!in_array($this->getImage()->get('id'), $hasImageIDs)) {
             throw new Exception(_('Image does not exist on any node'));
         }
         return true;
@@ -1449,14 +1438,7 @@ class Host extends FOGController
                 if ($TaskType->isCapture()) {
                     $StorageNode = $StorageGroup->getMasterStorageNode();
                 } else {
-                    $StorageNode = $this->getOptimalStorageNode(
-                        $this->get('imageID')
-                    );
-                }
-                if (!$StorageNode->isValid()) {
-                    $StorageNode = $StorageGroup->getOptimalStorageNode(
-                        $this->get('imageID')
-                    );
+                    $StorageNode = $this->getOptimalStorageNode();
                 }
                 if (!$StorageNode->isValid()) {
                     $msg = sprintf(
@@ -1640,8 +1622,8 @@ class Host extends FOGController
                 ->set(
                     'storagenodeID',
                     $StorageGroup
-                    ->getOptimalStorageNode($this->get('imageID'))
-                    ->get('id')
+                        ->getOptimalStorageNode()
+                        ->get('id')
                 )
                 ->set('imageID', $Image->get('id'));
         } catch (Exception $e) {
@@ -1665,7 +1647,7 @@ class Host extends FOGController
     {
         self::getClass('VirusManager')
             ->destroy(
-                array('hostMAC' => $this->getMyMacs())
+                array('mac' => $this->getMyMacs())
             );
         return $this;
     }
@@ -2194,10 +2176,10 @@ class Host extends FOGController
             ->set('ADDomain', trim($domain))
             ->set('ADOU', trim($ou))
             ->set('ADUser', trim($user))
-            ->set('ADPass', trim($this->encryptpw($pass)))
+            ->set('ADPass', $pass)
             ->set('ADPassLegacy', $legacy)
             ->set('productKey', trim($this->encryptpw($productKey)))
-            ->set('enforce', (int)$enforce);
+            ->set('enforce', (string)$enforce);
         return $this;
     }
     /**
