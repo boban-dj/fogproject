@@ -67,11 +67,17 @@ class ChangeItems extends Hook
                 'hostID' => $arguments['Host']->get('id')
             )
         );
+        $Locations = self::getSubObjectIDs(
+            'LocationAssociation',
+            array(
+                'hostID' => $arguments['Host']->get('id')
+            ),
+            'locationID'
+        );
         $method = false;
-        foreach ((array)$Locations as $Location) {
-            if (!$Location->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('LocationManager')
+            ->find(array('id' => $Locations)) as $Location
+        ) {
             $Host =& $arguments['Host'];
             $Task = $Host->get('task');
             $TaskType =& $arguments['TaskType'];
@@ -88,7 +94,6 @@ class ChangeItems extends Hook
                 $method = 'getMasterStorageNode';
             }
             $StorageGroup = $Location
-                ->getLocation()
                 ->getStorageGroup();
             if ($StorageGroup->isValid()) {
                 if (!isset($arguments['snapin'])
@@ -96,14 +101,12 @@ class ChangeItems extends Hook
                     && self::getSetting('FOG_SNAPIN_LOCATION_SEND_ENABLED') > 0)
                 ) {
                     $arguments['StorageNode'] = $Location
-                        ->getLocation()
                         ->getStorageNode();
                 }
                 if (!$method) {
                     continue;
                 }
                 $arguments['StorageNode'] = $Location
-                    ->getLocation()
                     ->getStorageGroup()
                     ->{$method}();
             }
@@ -125,17 +128,17 @@ class ChangeItems extends Hook
         if (!$arguments['Host']->isValid()) {
             return;
         }
-        $Locations = self::getClass('LocationAssociationManager')->find(
+        $Locations = self::getSubObjectIDs(
+            'LocationAssociation',
             array(
                 'hostID' => $arguments['Host']->get('id')
-            )
+            ),
+            'locationID'
         );
-        foreach ((array)$Locations as &$Location) {
-            if (!$Location->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('LocationManager')
+            ->find(array('id' => $Locations)) as &$Location
+        ) {
             $StorageGroup = $Location
-                ->getLocation()
                 ->getStorageGroup();
             if (!$StorageGroup->isValid()) {
                 continue;
@@ -159,15 +162,26 @@ class ChangeItems extends Hook
         if (!$arguments['Host']->isValid()) {
             return;
         }
-        $Locations = self::getClass('LocationAssociationManager')->find(
+        $Locations = self::getSubObjectIDs(
+            'LocationAssociation',
             array(
                 'hostID' => $arguments['Host']->get('id')
+            ),
+            'locationID'
+        );
+        $Locations = self::getSubObjectIDs(
+            'Location',
+            array(
+                'id' => $Locations
             )
         );
-        foreach ((array)$Locations as $Location) {
-            if (!$Location->isValid()) {
-                continue;
-            }
+        $find = array(
+            'hostID' => $arguments['Host']->get('id'),
+            'locationID' => $Locations
+        );
+        foreach ((array)self::getClass('LocationAssociationManager')
+            ->find($find) as $Location
+        ) {
             if (!$Location->isTFTP()) {
                 continue;
             }
@@ -178,27 +192,15 @@ class ChangeItems extends Hook
                 continue;
             }
             $ip = $StorageNode->get('ip');
-            $curroot = trim(
-                trim($StorageNode->get('webroot'), '/')
-            );
-            $webroot = sprintf(
-                '/%s',
-                (
-                    strlen($curroot) > 1 ?
-                    sprintf('%s/', $curroot) :
-                    ''
-                )
-            );
             $memtest = $arguments['memtest'];
             $memdisk = $arguments['memdisk'];
             $bzImage = $arguments['bzImage'];
             $initrd = $arguments['initrd'];
             $arguments['webserver'] = $ip;
-            $arguments['webroot'] = $webroot;
-            $arguments['memdisk'] = "http://${ip}${webroot}service/ipxe/$memdisk";
-            $arguments['memtest'] = "http://${ip}${webroot}service/ipxe/$memtest";
-            $arguments['bzImage'] = "http://${ip}${webroot}service/ipxe/$bzImage";
-            $arguments['imagefile'] = "http://${ip}${webroot}service/ipxe/$initrd";
+            $arguments['memdisk'] = "http://${ip}/fog/service/ipxe/$memdisk";
+            $arguments['memtest'] = "http://${ip}/fog/service/ipxe/$memtest";
+            $arguments['bzImage'] = "http://${ip}/fog/service/ipxe/$bzImage";
+            $arguments['imagefile'] = "http://${ip}/fog/service/ipxe/$initrd";
             unset($Location);
         }
     }
@@ -222,7 +224,7 @@ class ChangeItems extends Hook
             '',
             'storagenodeID'
         );
-        $storagenodeIDs = array_merge(
+        $storagenodeIDs = self::fastmerge(
             (array) $storagenodeIDs,
             (array) $arguments['MasterIDs']
         );

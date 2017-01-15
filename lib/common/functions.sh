@@ -297,8 +297,8 @@ addToAddress() {
     return 1
 }
 getFirstGoodInterface() {
-    siteToCheckForInternet=www.google.com #Must be domain name.
-    ipToCheckForInternet=8.8.8.8 #Must be IP.
+    siteToCheckForInternet="www.google.com" #Must be domain name.
+    ipToCheckForInternet="8.8.8.8" #Must be IP.
     [[ -e $workingdir/tempInterfaces.txt ]] && rm -f $workingdir/tempInterfaces.txt >/dev/null 2>&1
     foundinterfaces=$(ip -4 addr | awk -F'(global )' '/global / {print $2}')
     for interface in $foundinterfaces; do
@@ -539,12 +539,13 @@ addUbuntuRepo() {
 }
 installPackages() {
     [[ $installlang -eq 1 ]] && packages="$packages gettext"
+    packages="$packages unzip"
     dots "Adding needed repository"
     case $osid in
         1)
             pkginst=$(command -v dnf)
             [[ -z $pkginst ]] && pkginst=$(command -v yum)
-            pkginst=$(echo $pkginst -y install)
+            pkginst="$pkginst -y install"
             packages="$packages php-bcmath bc"
             packages="${packages// mod_fastcgi/}"
             packages="${packages// mod_evasive/}"
@@ -560,8 +561,12 @@ installPackages() {
                     fi
                     ;;
                 *)
-                    $pkginst epel-release >>$workingdir/error_logs/fog_error_${version}.log 2>&1
                     repo="enterprise"
+                    x="epel-release"
+                    eval $packageQuery >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                    if [[ ! $? -eq 0 ]]; then
+                        $pkginst epel-release >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                    fi
                     ;;
             esac
             y="http://rpms.remirepo.net/$repo/remi-release-${OSVersion}.rpm"
@@ -572,8 +577,8 @@ installPackages() {
                 rpm --import "http://rpms.remirepo.net/RPM-GPG-KEY-remi" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
             fi
             if [[ -n $repoenable ]]; then
-                eval $repoenable remi >>$workingdir/error_logs/fog_error_${version}.log 2>&1 || true
-                eval $repoenable remi-php56 >>$workingdir/error_logs/fog_error_${version}.log 2>&1 || true
+                $repoenable remi >>$workingdir/error_logs/fog_error_${version}.log 2>&1 || true
+                $repoenable remi-php56 >>$workingdir/error_logs/fog_error_${version}.log 2>&1 || true
             fi
             ;;
         2)
@@ -630,6 +635,7 @@ installPackages() {
     packages=$(echo ${packages[@]} | tr ' ' '\n' | sort -u | tr '\n' ' ')
     echo -e " * Packages to be installed:\n\n\t$packages\n\n"
     newPackList=""
+    local toInstall=""
     for x in $packages; do
         case $x in
             mysql)
@@ -686,13 +692,24 @@ installPackages() {
         newPackList="$newPackList $x"
         dots "Installing package: $x"
         DEBIAN_FRONTEND=noninteractive $packageinstaller $x >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        errorStat $?
+        if [[ ! $? -eq 0 ]]; then
+            echo "Failed! (Will try later)"
+            [[ -z $toInstall ]] && toInstall="$x" || toInstall="$toInstall $x"
+        else
+            echo "OK"
+        fi
     done
     packages=$newPackList
     packages=$(echo ${packages[@]} | tr ' ' '\n' | sort -u | tr '\n' ' ')
     dots "Updating packages as needed"
     DEBIAN_FRONTEND=noninteractive $packageupdater $packages >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     echo "OK"
+    if [[ -n $toInstall ]]; then
+        toInstall=$(echo ${toInstall[@]} | tr ' ' '\n' | sort -u | tr '\n' ' ')
+        dots "Installing now everything is updated"
+        DEBIAN_FRONTEND=noninteractive $packageinstaller $toInstall >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+        errorStat $?
+    fi
 }
 confirmPackageInstallation() {
     for x in $packages; do
@@ -987,7 +1004,7 @@ configureSnapins() {
     dots "Setting up FOG Snapins"
     mkdir -p $snapindir >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     if [[ -d $snapindir ]]; then
-        chmod -R 775 $snapindir
+        chmod -R 777 $snapindir
         chown -R fog:$apacheuser $snapindir
     fi
     errorStat $?
@@ -1042,29 +1059,27 @@ linkOptFogDir() {
 }
 configureStorage() {
     dots "Setting up storage"
-    if [[ ! -d $storageLocation ]]; then
-        mkdir $storageLocation >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        chmod -R 777 $storageLocation >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    [[ ! -d $storageLocation ]] && mkdir $storageLocation >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    [[ ! -f $storageLocation/.mntcheck ]] && touch $storageLocation/.mntcheck >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    [[ ! -d $storageLocation/postdownloadscripts ]] && mkdir $storageLocation/postdownloadscripts >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    if [[ ! -f $storageLocation/postdownloadscripts/fog.postdownload ]]; then
+        echo "#!/bin/bash" >"$storageLocation/postdownloadscripts/fog.postdownload"
+        echo "## This file serves as a starting point to call your custom postimaging scripts." >>"$storageLocation/postdownloadscripts/fog.postdownload"
+        echo "## <SCRIPTNAME> should be changed to the script you're planning to use." >>"$storageLocation/postdownloadscripts/fog.postdownload"
+        echo "## Syntax of post download scripts are" >>"$storageLocation/postdownloadscripts/fog.postdownload"
+        echo "#. \${postdownpath}<SCRIPTNAME>" >> "$storageLocation/postdownloadscripts/fog.postdownload"
     fi
-    if [[ ! -f $storageLocation/.mntcheck ]]; then
-        touch $storageLocation/.mntcheck >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        chmod 777 $storageLocation/.mntcheck >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    [[ ! -d $storageLocationCapture ]] && mkdir $storageLocationCapture >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    [[ ! -f $storageLocationCapture/.mntcheck ]] && touch $storageLocationCapture/.mntcheck >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    [[ ! -d $storageLocationCapture/postinitscripts ]] && mkdir $storageLocationCapture/postinitscripts >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    if [[ ! -f $storageLocationCapture/postinitscripts/fog.postinit ]]; then
+        echo "#!/bin/bash" >"$storageLocationCapture/postdownloadscripts/fog.postinit"
+        echo "## This file serves as a starting point to call your custom pre-imaging/post init loading scripts." >>"$storageLocationCapture/postinitscripts/fog.postinit"
+        echo "## <SCRIPTNAME> should be changed to the script you're planning to use." >>"$storageLocationCapture/postinitscripts/fog.postinit"
+        echo "## Syntax of post init scripts are" >>"$storageLocationCapture/postinitscripts/fog.postinit"
+        echo "#. \${postinitpath}<SCRIPTNAME>" >>"$storageLocationCapture/postinitscripts/fog.postinit"
     fi
-    if [[ ! -d $storageLocation/postdownloadscripts ]]; then
-        mkdir $storageLocation/postdownloadscripts >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        if [[ ! -f $storageLocation/postdownloadscripts/fog.postdownload ]]; then
-            echo -e "#!/bin/sh\n## This file serves as a starting point to call your custom postimaging scripts.\n## <SCRIPTNAME> should be changed to the script you're planning to use.\n## Syntax of post download scripts are\n#. \${postdownpath}<SCRIPTNAME>" > "$storageLocation/postdownloadscripts/fog.postdownload"
-        fi
-        chmod -R 777 $storageLocation >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    fi
-    if [[ ! -d $storageLocationCapture ]]; then
-        mkdir $storageLocationCapture >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        chmod -R 777 $storageLocationCapture >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    fi
-    if [[ ! -f $storageLocationCapture/.mntcheck ]]; then
-        touch $storageLocationCapture/.mntcheck >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        chmod 777 $storageLocationCapture/.mntcheck >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    fi
+    chmod -R 777 $storageLocation $storageLocationCapture >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     errorStat $?
 }
 clearScreen() {
@@ -1236,6 +1251,8 @@ writeUpdateFile() {
         else
             echo "## Start of FOG Settings" > "$fogprogramdir/.fogsettings"
             echo "## Created by the FOG Installer" >> "$fogprogramdir/.fogsettings"
+            echo "## Find more information about this file in the FOG Project wiki:" >> "$fogprogramdir/.fogsettings"
+            echo "##     https://wiki.fogproject.org/wiki/index.php?title=.fogsettings" >> "$fogprogramdir/.fogsettings"
             echo "## Version: $version" >> "$fogprogramdir/.fogsettings"
             echo "## Install time: $tmpDte" >> "$fogprogramdir/.fogsettings"
             echo "ipaddress='$ipaddress'" >> "$fogprogramdir/.fogsettings"
@@ -1280,6 +1297,8 @@ writeUpdateFile() {
     else
         echo "## Start of FOG Settings" > "$fogprogramdir/.fogsettings"
         echo "## Created by the FOG Installer" >> "$fogprogramdir/.fogsettings"
+        echo "## Find more information about this file in the FOG Project wiki:" >> "$fogprogramdir/.fogsettings"
+        echo "##     https://wiki.fogproject.org/wiki/index.php?title=.fogsettings" >> "$fogprogramdir/.fogsettings"
         echo "## Version: $version" >> "$fogprogramdir/.fogsettings"
         echo "## Install time: $tmpDte" >> "$fogprogramdir/.fogsettings"
         echo "ipaddress='$ipaddress'" >> "$fogprogramdir/.fogsettings"
@@ -1545,10 +1564,14 @@ configureHttpd() {
     [[ -n $snmysqlhost ]] && options="$options -h$snmysqlhost"
     [[ -n $snmysqluser ]] && options="$options -u'$snmysqluser'"
     [[ -n $snmysqlpass ]] && options="$options -p'$snmysqlpass'"
-    mysqlver=$(mysql -V | awk 'match($0,/Distrib[ ](.*)[,]/,a) {print a[1]}')
-    mariadb=$(echo $mysqlver | grep -oi mariadb)
+    mysqlver=$(mysql -V |  sed -n 's/.*Distrib[ ]\(\([0-9]\([.]\|\)\)*\).*\([-]\|\)[,].*/\1/p')
+    mariadb=$(mysql -V |  sed -n 's/.*Distrib[ ].*[-]\(.*\)[,].*/\1/p')
+    vertocheck="5.7"
+    if [[ -n $mariadb ]]; then
+        mysqlver=$(mysql -V | sed -n 's/.*Ver[ ]\(.*\)[ ].*Distrib.*/\1/p')
+        vertocheck="10.2"
+    fi
     mysqlver=$(echo $mysqlver | awk -F'([.])' '{print $1"."$2}')
-    [[ -n $mariadb ]] && vertocheck="10.2" || vertocheck="5.7"
     runTest=$(echo "$mysqlver < $vertocheck" | bc)
     if [[ $runTest -eq 0 ]]; then
         [[ -z $snmysqlhost ]] && snmysqlhost='localhost'
@@ -1643,13 +1666,7 @@ configureHttpd() {
             cp -Rf ${backupPath}/fog_web_${version}.BACKUP/* $webdirdest/
             errorStat $?
             dots "Ensuring all classes are lowercased"
-            for i in $(find $webdirdest -type f -name "*[A-Z]*\.class\.php"); do
-                mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-            done
-            for i in $(find $webdirdest -type f -name "*[A-Z]*\.event\.php"); do
-                mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-            done
-            for i in $(find $webdirdest -type f -name "*[A-Z]*\.hook\.php"); do
+            for i in $(find $webdirdest -type f -name "*[A-Z]*\.class\.php" -o -name "*[A-Z]*\.event\.php" -o -name "*[A-Z]*\.hook\.php"); do
                 mv "$i" "$(echo $i | tr A-Z a-z)" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
             done
             errorStat $?
@@ -1658,15 +1675,14 @@ configureHttpd() {
     dots "Copying new files to web folder"
     cp -Rf $webdirsrc/* $webdirdest/
     errorStat $?
+    for i in $(find $backupPath/fog_web_${version}.BACKUP/management/other/ -maxdepth 1 -type f -not -name gpl-3.0.txt -a -not -name index.php -a -not -name 'ca.*'); do
+        cp -Rf $i ${webdirdest}/management/other/ >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    done
     if [[ $installlang -eq 1 ]]; then
         dots "Creating the language binaries"
-        msgfmt -o $webdirdest/management/languages/de_DE.UTF-8/LC_MESSAGES/messages.mo $webdirdest/management/languages/de_DE.UTF-8/LC_MESSAGES/messages.po
-        msgfmt -o $webdirdest/management/languages/en_US.UTF-8/LC_MESSAGES/messages.mo $webdirdest/management/languages/en_US.UTF-8/LC_MESSAGES/messages.po
-        msgfmt -o $webdirdest/management/languages/es_ES.UTF-8/LC_MESSAGES/messages.mo $webdirdest/management/languages/es_ES.UTF-8/LC_MESSAGES/messages.po
-        msgfmt -o $webdirdest/management/languages/fr_FR.UTF-8/LC_MESSAGES/messages.mo $webdirdest/management/languages/fr_FR.UTF-8/LC_MESSAGES/messages.po
-        msgfmt -o $webdirdest/management/languages/it_IT.UTF-8/LC_MESSAGES/messages.mo $webdirdest/management/languages/it_IT.UTF-8/LC_MESSAGES/messages.po
-        msgfmt -o $webdirdest/management/languages/pt_BR.UTF-8/LC_MESSAGES/messages.mo $webdirdest/management/languages/pt_BR.UTF-8/LC_MESSAGES/messages.po
-        msgfmt -o $webdirdest/management/languages/zh_CN.UTF-8/LC_MESSAGES/messages.mo $webdirdest/management/languages/zh_CN.UTF-8/LC_MESSAGES/messages.po
+        langpath="${webdirdest}/management/languages"
+        languagesfound=$(find $langpath -maxdepth 1 -type d -exec basename {} \; | awk -F. '/\./ {print $1}')
+        languagemogen "$languagesfound" "$langpath"
         echo "Done"
     fi
     dots "Creating config file"
@@ -1791,8 +1807,82 @@ class Config
     }
 }" > "${webdirdest}/lib/fog/config.class.php"
     errorStat $?
+    if [[ $fullrelease == 0 ]]; then
+        downloadfiles
+    else
+        if [[ ! -f ../binaries${fullrelease}.zip ]]; then
+            dots "Downloading binaries needed"
+            curl --silent -ko "../binaries${fullrelease}.zip" "https://fogproject.org/binaries${fullrelease}.zip" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            errorStat $?
+        fi
+        dots "Unzipping the binaries"
+        cwd=$(pwd)
+        cd ..
+        unzip -o binaries${fullrelease}.zip >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+        cd $cwd
+        echo "Done"
+        dots "Copying binaries where needed"
+        [[ -d ../packages/clientfiles/ ]] && cp -vf ../packages/clientfiles/* "${webdirdest}/client/" >>$workingdir/error_logs/fog_error_${version}.log 2>&1 || errorStat 1
+        [[ -d ../packages/kernels/ ]] && cp -vf ../packages/kernels/* "${webdirdest}/service/ipxe/" >>$workingdir/error_logs/fog_error_${version}.log 2>&1 || errorStat 1
+        [[ -d ../packages/inits/ ]] && cp -vf ../packages/inits/* "${webdirdest}/service/ipxe/" >>$workingdir/error_logs/fog_error_${version}.log 2>&1 || errorStat 1
+        echo "Done"
+    fi
+    if [[ $osid -eq 2 ]]; then
+        php -m | grep mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+        if [[ ! $? -eq 0 ]]; then
+            ${phpcmd}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            if [[ ! $? -eq 0 ]]; then
+                if [[ -e /etc/php${php_ver}/conf.d/mysqlnd.ini ]]; then
+                    cp -f "/etc/php${php_ver}/conf.d/mysqlnd.ini" "/etc/php${php_ver}/mods-available/php${php_ver}-mysqlnd.ini" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                    ${phpcmd}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                fi
+            fi
+        fi
+        php -m | grep mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+        if [[ ! $? -eq 0 ]]; then
+            ${phpcmd}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            if [[ ! $? -eq 0 ]]; then
+                if [[ -e /etc/php${php_ver}/conf.d/mcrypt.ini ]]; then
+                    cp -f "/etc/php${php_ver}/conf.d/mcrypt.ini" "/etc/php${php_ver}/mods-available/php${php_ver}-mcrypt.ini" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                    ${phpcmd}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+                fi
+            fi
+        fi
+    fi
+    dots "Enabling apache and fpm services on boot"
+    if [[ $osid -eq 2 ]]; then
+        if [[ $systemctl == yes ]]; then
+            systemctl enable apache2 >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            systemctl enable $phpfpm >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+        else
+            sysv-rc-conf apache2 on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+            sysv-rc-conf $phpfpm on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+        fi
+    elif [[ $systemctl == yes ]]; then
+        systemctl enable httpd php-fpm >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    else
+        chkconfig php-fpm on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+        chkconfig httpd on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    fi
+    errorStat $?
+    createSSLCA
+    dots "Changing permissions on apache log files"
+    chmod +rx $apachelogdir
+    chmod +rx $apacheerrlog
+    chmod +rx $apacheacclog
+    chown -R ${apacheuser}:${apacheuser} $webdirdest
+    errorStat $?
+    rm -f "$webdirdest/mobile/css/font-awesome.css" $webdirdest/mobile/{fonts,less,scss} &>>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    [[ -d /var/www/html/ && ! -e /var/www/html/fog/ ]] && ln -s "$webdirdest" /var/www/html/
+    [[ -d /var/www/ && ! -e /var/www/fog ]] && ln -s "$webdirdest" /var/www/
+    ln -s "$webdirdest/management/css/font-awesome.css" "$webdirdest/mobile/css/font-awesome.css"
+    ln -s "$webdirdest/management/fonts" "$webdirdest/mobile/"
+    ln -s "$webdirdest/management/less" "$webdirdest/mobile/"
+    ln -s "$webdirdest/management/scss" "$webdirdest/mobile/"
+    chown -R ${apacheuser}:${apacheuser} "$webdirdest"
+}
+downloadfiles() {
     clientVer="$(awk -F\' /"define\('FOG_CLIENT_VERSION'[,](.*)"/'{print $4}' ../packages/web/lib/fog/system.class.php | tr -d '[[:space:]]')"
-
     clienturl="https://github.com/FOGProject/fog-client/releases/download/${clientVer}/FOGService.msi"
     siurl="https://github.com/FOGProject/fog-client/releases/download/${clientVer}/SmartInstaller.exe"
     [[ ! -d $workingdir/checksum_init ]] && mkdir -p $workingdir/checksum_init >/dev/null 2>&1
@@ -1801,7 +1891,6 @@ class Config
     curl --silent -ko "${workingdir}/checksum_init/checksums" https://fogproject.org/inits/index.php -ko "${workingdir}/checksum_kernel/checksums" https://fogproject.org/kernels/index.php >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     errorStat $?
     dots "Downloading inits, kernels, and the fog client"
-    >>$workingdir/error_logs/fog_error_${version}.log 2>&1
     curl --silent -ko "${webdirdest}/service/ipxe/init.xz" https://fogproject.org/inits/init.xz -ko "${webdirdest}/service/ipxe/init_32.xz" https://fogproject.org/inits/init_32.xz -ko "${webdirdest}/service/ipxe/bzImage" https://fogproject.org/kernels/bzImage -ko "${webdirdest}/service/ipxe/bzImage32" https://fogproject.org/kernels/bzImage32 >>$workingdir/error_logs/fog_error_${version}.log 2>&1 && curl --silent -ko "${webdirdest}/client/FOGService.msi" -L $clienturl -ko "${webdirdest}/client/SmartInstaller.exe" -L $siurl >> $workingdir/error_logs/fog_error_${version}.log 2>&1
     errorStat $?
     dots "Comparing checksums of kernels and inits"
@@ -1866,59 +1955,6 @@ class Config
         [[ -z $exitFail ]] && exit 1
     fi
     echo "Done"
-    if [[ $osid -eq 2 ]]; then
-        php -m | grep mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        if [[ ! $? -eq 0 ]]; then
-            ${phpcmd}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-            if [[ ! $? -eq 0 ]]; then
-                if [[ -e /etc/php${php_ver}/conf.d/mysqlnd.ini ]]; then
-                    cp -f "/etc/php${php_ver}/conf.d/mysqlnd.ini" "/etc/php${php_ver}/mods-available/php${php_ver}-mysqlnd.ini" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    ${phpcmd}enmod mysqlnd >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                fi
-            fi
-        fi
-        php -m | grep mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        if [[ ! $? -eq 0 ]]; then
-            ${phpcmd}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-            if [[ ! $? -eq 0 ]]; then
-                if [[ -e /etc/php${php_ver}/conf.d/mcrypt.ini ]]; then
-                    cp -f "/etc/php${php_ver}/conf.d/mcrypt.ini" "/etc/php${php_ver}/mods-available/php${php_ver}-mcrypt.ini" >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                    ${phpcmd}enmod mcrypt >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-                fi
-            fi
-        fi
-    fi
-    dots "Enabling apache and fpm services on boot"
-    if [[ $osid -eq 2 ]]; then
-        if [[ $systemctl == yes ]]; then
-            systemctl enable apache2 >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-            systemctl enable $phpfpm >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        else
-            sysv-rc-conf apache2 on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-            sysv-rc-conf $phpfpm on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        fi
-    elif [[ $systemctl == yes ]]; then
-        systemctl enable httpd php-fpm >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    else
-        chkconfig php-fpm on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-        chkconfig httpd on >>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    fi
-    errorStat $?
-    createSSLCA
-    dots "Changing permissions on apache log files"
-    chmod +rx $apachelogdir
-    chmod +rx $apacheerrlog
-    chmod +rx $apacheacclog
-    chown -R ${apacheuser}:${apacheuser} $webdirdest
-    errorStat $?
-    rm -f "$webdirdest/mobile/css/font-awesome.css" $webdirdest/mobile/{fonts,less,scss} &>>$workingdir/error_logs/fog_error_${version}.log 2>&1
-    [[ -d /var/www/html/ && ! -e /var/www/html/fog/ ]] && ln -s "$webdirdest" /var/www/html/
-    [[ -d /var/www/ && ! -e /var/www/fog ]] && ln -s "$webdirdest" /var/www/
-    ln -s "$webdirdest/management/css/font-awesome.css" "$webdirdest/mobile/css/font-awesome.css"
-    ln -s "$webdirdest/management/fonts" "$webdirdest/mobile/"
-    ln -s "$webdirdest/management/less" "$webdirdest/mobile/"
-    ln -s "$webdirdest/management/scss" "$webdirdest/mobile/"
-    chown -R ${apacheuser}:${apacheuser} "$webdirdest"
 }
 configureDHCP() {
     dots "Setting up and starting DHCP Server"
@@ -2065,4 +2101,17 @@ vercomp() {
         fi
     done
     return 0
+}
+languagemogen() {
+    local languages="$1"
+    local langpath="$2"
+    local IFS=$'\n'
+    local lang=''
+    for lang in ${languages[@]}; do
+        [[ ! -d "${langpath}/${lang}.UTF-8" ]] && continue
+        msgfmt -o \
+            "${langpath}/${lang}.UTF-8/LC_MESSAGES/messages.mo" \
+            "${langpath}/${lang}.UTF-8/LC_MESSAGES/messages.po" \
+            >>$workingdir/error_logs/fog_error_${version}.log 2>&1
+    done
 }

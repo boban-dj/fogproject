@@ -475,8 +475,8 @@ abstract class FOGController extends FOGBase
                     }
                     break;
                 case 'createdTime':
-                    if (!($val && $this->validDate($val))) {
-                        $val = $this->formatTime('now', 'Y-m-d H:i:s');
+                    if (!($val && self::validDate($val))) {
+                        $val = self::formatTime('now', 'Y-m-d H:i:s');
                     }
                     break;
                 case 'id':
@@ -1079,7 +1079,7 @@ abstract class FOGController extends FOGBase
                 unset($db_key, $obj_key);
             }
         }
-        $this->data = array_merge(
+        $this->data = self::fastmerge(
             (array) $this->data,
             (array) $classData
         );

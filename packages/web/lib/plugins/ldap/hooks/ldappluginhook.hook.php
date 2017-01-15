@@ -64,10 +64,6 @@ class LDAPPluginHook extends Hook
         }
         $user = trim($arguments['username']);
         $pass = trim($arguments['password']);
-        self::$FOGUser = self::$FOGCore->attemptLogin(
-            $user,
-            $pass
-        );
         $ldapTypes = array(990, 991);
         /**
          * Check the user and validate the type is not
@@ -81,40 +77,32 @@ class LDAPPluginHook extends Hook
             }
         }
         /**
-         * Collects the user ids with our ldap entries.
-         */
-        $userIDs = self::getSubObjectIDs(
-            'User',
-            array('type' => $ldapTypes)
-        );
-        /**
          * Count the user ids and if any are there,
          * remove all the entries.
          */
-        if (count($userIDs) > 0) {
+        if (!self::$ajax) {
             self::getClass('UserManager')
-                ->destroy(array('id' => $userIDs));
+                ->destroy(
+                    array(
+                        'name' => $user,
+                        'type' => $ldapTypes,
+
+                    )
+                );
         }
-        $ldaps = self::getClass('LDAPManager')->find();
         /**
          * Create our new user (initially at least
          */
-        self::$FOGUser = self::getClass('User')
-            ->set('name', $user);
-        foreach ((array)$ldaps as &$ldap) {
-            if (!$ldap->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('LDAPManager')
+            ->find() as &$ldap
+        ) {
             $access = $ldap->authLDAP($user, $pass);
             unset($ldap);
             switch ($access) {
-            case false:
-                // Reset user object and Skip this
-                self::$FOGUser = self::getClass('User');
-                continue 2;
             case 2:
                 // This is an admin account, break the loop
                 self::$FOGUser
+                    ->set('name', $user)
                     ->set('password', $pass)
                     ->set('type', 990)
                     ->save();
@@ -122,10 +110,13 @@ class LDAPPluginHook extends Hook
             case 1:
                 // This is an unprivileged user account.
                 self::$FOGUser
+                    ->set('name', $user)
                     ->set('password', $pass)
                     ->set('type', 991)
                     ->save();
                 break;
+            default:
+                self::$FOGUser = new User();
             }
         }
         unset($ldaps);
@@ -163,6 +154,24 @@ class LDAPPluginHook extends Hook
         }
         $arguments['types'] = array(990, 991);
     }
+    /**
+     * Tests if the user is containing the ldap types.
+     *
+     * @param mixed $arguments the item to adjust
+     *
+     * @return void
+     */
+    public function isLdapType($arguments)
+    {
+        if (!in_array($this->node, (array)$_SESSION['PluginsInstalled'])) {
+            return;
+        }
+        $types = array(990, 991);
+        if (in_array($arguments['type'], $types)) {
+            $arguments['typeIsValid'] = false;
+        }
+        $arguments['types'] = array(990, 991);
+    }
 }
 $LDAPPluginHook = new LDAPPluginHook();
 $HookManager
@@ -187,5 +196,13 @@ $HookManager
         array(
             $LDAPPluginHook,
             'setTypeFilter'
+        )
+    );
+$HookManager
+    ->register(
+        'USER_TYPE_VALID',
+        array(
+            $LDAPPluginHook,
+            'isLdapType'
         )
     );

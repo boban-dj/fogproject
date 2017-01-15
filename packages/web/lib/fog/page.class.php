@@ -263,7 +263,7 @@ class Page extends FOGBase
                 }
             );
             if (!self::$isMobile) {
-                $links = array_merge(
+                $links = self::fastmerge(
                     (array)$links,
                     array(
                         'hwinfo',
@@ -334,6 +334,7 @@ class Page extends FOGBase
                 'js/jquery-ui-timepicker-addon.js',
                 'js/fog/fog.js',
                 'js/fog/fog.main.js',
+                'js/jscolor.min.js'
             );
             if ($sub == 'membership') {
                 $sub = 'edit';
@@ -392,6 +393,7 @@ class Page extends FOGBase
                 'js/jquery.progressbar.js',
                 'js/fog/fog.js',
                 'js/fog/fog.login.js',
+                'js/jscolor.min.js'
             );
             if ($node === 'schema') {
                 array_push($files, 'js/fog/fog.schema.js');
@@ -497,6 +499,9 @@ class Page extends FOGBase
             );
         }
         include '../management/other/index.php';
+        foreach (array_keys(get_defined_vars()) as $var) {
+            unset($$var);
+        }
         return $this;
     }
 }

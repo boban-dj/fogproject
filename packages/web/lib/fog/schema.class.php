@@ -109,7 +109,7 @@ class Schema extends FOGController
                 return;
             } elseif (count($indexes) === 1) {
                 $ending = sprintf(
-                    'INDEX `%s`',
+                    'INDEX (`%s`)',
                     array_shift($indexes)
                 );
             } else {
@@ -188,7 +188,7 @@ class Schema extends FOGController
         if (!$backup_name) {
             $backup_name = sprintf(
                 'fog_backup_%s.sql',
-                $this->formatTime('', 'Ymd_His')
+                self::formatTime('', 'Ymd_His')
             );
         }
         $dump = self::getClass('Mysqldump');

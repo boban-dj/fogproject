@@ -91,15 +91,7 @@ class ImageReplicator extends FOGService
     private function _commonOutput()
     {
         try {
-            $StorageNodes = $this->checkIfNodeMaster();
-            foreach ((array)$StorageNodes as &$StorageNode) {
-                self::out(
-                    sprintf(
-                        ' * %s',
-                        _('I am the group manager')
-                    ),
-                    static::$dev
-                );
+            foreach ((array)$this->checkIfNodeMaster() as &$StorageNode) {
                 self::wlog(
                     sprintf(
                         '* %s',
@@ -215,13 +207,10 @@ class ImageReplicator extends FOGService
                     ),
                     'imageID'
                 );
-                $Images = self::getClass('ImageManager')
+                $Images = (array)self::getClass('ImageManager')
                     ->find(array('id' => $imageIDs));
-                unset($imageIDs);
-                foreach ((array)$Images as &$Image) {
-                    if (!$Image->isValid()) {
-                        continue;
-                    }
+                foreach ($Images as &$Image
+                ) {
                     if (!$Image->getPrimaryGroup($myStorageGroupID)) {
                         self::outall(
                             sprintf(
@@ -288,19 +277,6 @@ class ImageReplicator extends FOGService
      */
     public function serviceRun()
     {
-        self::out(
-            ' ',
-            static::$dev
-        );
-        $str = str_pad('+', 75, '-');
-        self::out($str, static::$dev);
-        self::out(
-            sprintf(
-                ' * %s.',
-                _('Checking if I am the group manager')
-            ),
-            static::$dev
-        );
         self::wlog(
             sprintf(
                 ' * %s.',
@@ -309,7 +285,6 @@ class ImageReplicator extends FOGService
             '/opt/fog/log/groupmanager.log'
         );
         $this->_commonOutput();
-        self::out($str, static::$dev);
         parent::serviceRun();
     }
 }

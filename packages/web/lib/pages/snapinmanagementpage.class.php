@@ -684,7 +684,7 @@ class SnapinManagementPage extends FOGPage
                     throw new Exception(_('Failed to add/update snapin file'));
                 }
                 self::$FOGFTP
-                    ->chmod(0755, $dest)
+                    ->chmod(0777, $dest)
                     ->close();
             }
             $reboot = false;
@@ -773,20 +773,15 @@ class SnapinManagementPage extends FOGPage
         );
         self::$selected = $this->obj->get('file');
         /**
-         * Get the storage groups associated with this snapin.
-         */
-        $StorageGroups = self::getClass('StorageGroupManager')->find(
-            array('id' => $this->obj->get('storagegroups'))
-        );
-        /**
          * Loop our groups to get the enabled nodes.
          */
         $nodeIDs = array();
-        foreach ((array)$StorageGroups as &$StorageGroup) {
-            if (!$StorageGroup->isValid()) {
-                continue;
-            }
-            $nodeIDs = array_merge(
+        foreach ((array)self::getClass('StorageGroupManager')
+            ->find(
+                array('id' => $this->obj->get('storagegroups'))
+            ) as &$StorageGroup
+        ) {
+            $nodeIDs = self::fastmerge(
                 (array)$nodeIDs,
                 (array)$StorageGroup->get('enablednodes')
             );
@@ -804,14 +799,12 @@ class SnapinManagementPage extends FOGPage
          * If we have nodes, we'll scan them.
          */
         if (count($nodeIDs) > 0) {
-            $StorageNodes = self::getClass('StorageNodeManager')->find(
-                array('id' => $nodeIDs)
-            );
-            foreach ((array)$StorageNodes as &$StorageNode) {
-                if (!$StorageNode->isValid()) {
-                    continue;
-                }
-                $filelist = array_merge(
+            foreach ((array)self::getClass('StorageNodeManager')
+                ->find(
+                    array('id' => $nodeIDs)
+                ) as &$StorageNode
+            ) {
+                $filelist = self::fastmerge(
                     (array)$filelist,
                     (array)$StorageNode->get('snapinfiles')
                 );
@@ -1047,13 +1040,11 @@ class SnapinManagementPage extends FOGPage
             ),
             array(),
         );
-        $StorageGroups = self::getClass('StorageGroupManager')->find(
-            array('id' => $this->obj->get('storagegroupsnotinme'))
-        );
-        foreach ((array)$StorageGroups as &$StorageGroup) {
-            if (!$StorageGroup->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('StorageGroupManager')
+            ->find(
+                array('id' => $this->obj->get('storagegroupsnotinme'))
+            ) as &$StorageGroup
+        ) {
             $this->data[] = array(
                 'storageGroup_id' => $StorageGroup->get('id'),
                 'storageGroup_name' => $StorageGroup->get('name'),
@@ -1120,13 +1111,11 @@ class SnapinManagementPage extends FOGPage
             ),
             '${storageGroup_name}',
         );
-        $StorageGroups = self::getClass('StorageGroupManager')->find(
-            array('id' => $this->obj->get('storagegroups'))
-        );
-        foreach ((array)$StorageGroups as &$StorageGroup) {
-            if (!$StorageGroup->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('StorageGroupManager')
+            ->find(
+                array('id' => $this->obj->get('storagegroups'))
+            ) as &$StorageGroup
+        ) {
             $this->data[] = array(
                 'storageGroup_id' => $StorageGroup->get('id'),
                 'storageGroup_name' => $StorageGroup->get('name'),
@@ -1221,8 +1210,13 @@ class SnapinManagementPage extends FOGPage
                     $hash = hash_file('sha512', $src);
                     $size = self::getFilesize($src);
                 } else {
-                    $hash = '';
-                    $size = 0;
+                    if ($snapinfile == $this->obj->get('file')) {
+                        $hash = $this->obj->get('hash');
+                        $size = $this->obj->get('size');
+                    } else {
+                        $hash = '';
+                        $size = 0;
+                    }
                 }
                 $dest = sprintf(
                     '/%s/%s',
@@ -1256,7 +1250,7 @@ class SnapinManagementPage extends FOGPage
                         throw new Exception(_('Failed to add/update snapin file'));
                     }
                     self::$FOGFTP
-                        ->chmod(0755, $dest)
+                        ->chmod(0777, $dest)
                         ->close();
                 }
                 $this->obj

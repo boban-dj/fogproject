@@ -221,8 +221,6 @@ class BootMenu extends FOGBase
             'FOG_KEYMAP',
             'FOG_KEY_SEQUENCE',
             'FOG_MEMTEST_KERNEL',
-            'FOG_PLUGIN_CAPONE_DMI',
-            'FOG_PLUGIN_CAPONE_SHUTDOWN',
             'FOG_PXE_BOOT_IMAGE',
             'FOG_PXE_BOOT_IMAGE_32',
             'FOG_PXE_HIDDENMENU_TIMEOUT',
@@ -240,8 +238,6 @@ class BootMenu extends FOGBase
             $keymap,
             $keySequence,
             $memtest,
-            $caponeDMI,
-            $caponeShutdown,
             $imagefile,
             $init_32,
             $hiddenTimeout,
@@ -261,53 +257,6 @@ class BootMenu extends FOGBase
             false,
             ''
         );
-        if (!in_array('capone', (array)$_SESSION['PluginsInstalled'])) {
-            $serviceNames = array(
-                'FOG_EFI_BOOT_EXIT_TYPE',
-                'FOG_KERNEL_ARGS',
-                'FOG_KERNEL_DEBUG',
-                'FOG_KERNEL_LOGLEVEL',
-                'FOG_KERNEL_RAMDISK_SIZE',
-                'FOG_KEYMAP',
-                'FOG_KEY_SEQUENCE',
-                'FOG_MEMTEST_KERNEL',
-                'FOG_PXE_BOOT_IMAGE',
-                'FOG_PXE_BOOT_IMAGE_32',
-                'FOG_PXE_HIDDENMENU_TIMEOUT',
-                'FOG_PXE_MENU_HIDDEN',
-                'FOG_PXE_MENU_TIMEOUT',
-                'FOG_TFTP_PXE_KERNEL',
-                'FOG_TFTP_PXE_KERNEL_32',
-            );
-            list(
-                $exit,
-                $kernelArgs,
-                $kernelDebug,
-                $kernelLogLevel,
-                $kernelRamDisk,
-                $keymap,
-                $keySequence,
-                $memtest,
-                $imagefile,
-                $init_32,
-                $hiddenTimeout,
-                $hiddenmenu,
-                $menuTimeout,
-                $bzImage,
-                $bzImage32
-            ) = self::getSubObjectIDs(
-                'Service',
-                array(
-                    'name' => $serviceNames
-                ),
-                'value',
-                false,
-                'AND',
-                'name',
-                false,
-                ''
-            );
-        }
         $memdisk = 'memdisk';
         $loglevel = $kernelLogLevel;
         $ramsize = $kernelRamDisk;
@@ -373,7 +322,7 @@ class BootMenu extends FOGBase
         $this->_bootexittype = self::$_exitTypes[$exit];
         $this->_loglevel = "loglevel=$loglevel";
         $this->_KS = self::getClass('KeySequence', $keySequence);
-        $this->_booturl = "http://{$webserver}{$webroot}service";
+        $this->_booturl = "http://{$webserver}/fog/service";
         $this->_memdisk = "kernel $memdisk";
         $this->_memtest = "initrd $memtest";
         $this->_kernel = sprintf(
@@ -394,15 +343,8 @@ class BootMenu extends FOGBase
             )
         );
         $this->_initrd = "imgfetch $imagefile";
-        self::_caponeMenu(
-            $this->_storage,
-            $this->_path,
-            $this->_shutdown,
-            $caponeDMI,
-            $caponeShutdown,
-            $StorageNode,
-            self::$FOGCore
-        );
+        self::$HookManager
+            ->processEvent('BOOT_MENU_ITEM');
         $PXEMenuID = @max(
             self::getSubObjectIDs(
                 'PXEMenuOptions',
@@ -449,73 +391,6 @@ class BootMenu extends FOGBase
         }
     }
     /**
-     * If it doesn't exist, create the capone menu
-     *
-     * @param string      $storage     the storage
-     * @param string      $path        the path
-     * @param mixed       $shutdown    if shutdown is to be used
-     * @param string      $DMISet      Capone's dmi field
-     * @param mixed       $Shutdown    Capone's shutdown field
-     * @param StorageNode $StorageNode The Storage Node to use
-     * @param FOGCore     $FOGCore     FOGCore class
-     *
-     * @return void
-     */
-    private static function _caponeMenu(
-        &$storage,
-        &$path,
-        &$shutdown,
-        $DMISet,
-        $Shutdown,
-        &$StorageNode,
-        &$FOGCore
-    ) {
-        if (!in_array('capone', (array)$_SESSION['PluginsInstalled'])) {
-            return;
-        }
-        if (!$DMISet) {
-            return;
-        }
-        $storage = $StorageNode->get('ip');
-        $path = $StorageNode->get('path');
-        $shutdown = $Shutdown;
-        $dmi = $DMISet;
-        $args = trim("mode=capone shutdown=$shutdown");
-        $CaponeMenu = self::getClass('PXEMenuOptions')
-            ->set('name', 'fog.capone')
-            ->load('name');
-        if (!$CaponeMenu->isValid()) {
-            $CaponeMenu->set('name', 'fog.capone')
-                ->set('description', _('Capone Deploy'))
-                ->set('args', $args)
-                ->set('params', null)
-                ->set('default', 0)
-                ->set('regMenu', 2);
-        }
-        $setArgs = explode(' ', trim($CaponeMenu->get('args')));
-        $neededArgs = explode(' ', trim($args));
-        $sureArgs = array();
-        array_walk(
-            $setArgs,
-            function (&$arg, &$index) use (&$sureArgs) {
-                if (!preg_match('#^dmi=#', $arg)) {
-                    $sureArgs[] = $arg;
-                }
-            }
-        );
-        $setArgs = $sureArgs;
-        array_walk(
-            $neededArgs,
-            function (&$arg, &$index) use (&$setArgs) {
-                if (!in_array($arg, $setArgs)) {
-                    $setArgs[] = $arg;
-                }
-            }
-        );
-        $setArgs[] = sprintf('dmi=%s', $dmi);
-        $CaponeMenu->set('args', implode(' ', $setArgs))->save();
-    }
-    /**
      * Sets the default menu item
      *
      * @param int    $timeout the timeout interval
@@ -552,7 +427,8 @@ class BootMenu extends FOGBase
                 ''
             ),
         );
-        self::getClass('iPXE', @max(self::getSubObjectIDs('iPXE', $findWhere)))
+        $id = @max(self::getSubObjectIDs('iPXE', $findWhere));
+        self::getClass('iPXE', $id)
             ->set('product', $findWhere['product'])
             ->set('manufacturer', $findWhere['manufacturer'])
             ->set('mac', $findWhere['mac'])
@@ -821,14 +697,14 @@ class BootMenu extends FOGBase
     {
         $findWhere = array(
             'name' => trim($_REQUEST['sessname']),
-            'stateID' => array_merge(
-                $this->getQueuedStates(),
-                (array)$this->getProgressState()
+            'stateID' => self::fastmerge(
+                self::getQueuedStates(),
+                (array)self::getProgressState()
             ),
         );
-        $Sessions = self::getClass('MulticastSessionsManager')
-            ->find($findWhere);
-        foreach ($Sessions as &$MulticastSession) {
+        foreach ((array)self::getClass('MulticastSessionsManager')
+            ->find($findWhere) as &$MulticastSession
+        ) {
             if (!$MulticastSession->isValid()
                 || $MulticastSession->get('sessclients') < 1
             ) {
@@ -1509,6 +1385,25 @@ class BootMenu extends FOGBase
                     if (is_numeric($image_PIGZ) && $image_PIGZ > -1) {
                         $PIGZ_COMP = $image_PIGZ;
                     }
+                } else {
+                    // These setup so postinit scripts can operate.
+                    if ($StorageNode instanceof StorageNode
+                        && $StorageNode->isValid()
+                    ) {
+                        $ip = trim($StorageNode->get('ip'));
+                        $ftp = $ip;
+                    } else {
+                        $ip = $tftp;
+                        $ftp = $tftp;
+                    }
+                    $storage = escapeshellcmd(
+                        sprintf(
+                            '%s:/%s/dev/',
+                            $ip,
+                            trim($StorageNode->get('path'), '/')
+                        )
+                    );
+                    $storageip = $ip;
                 }
             }
             if ($this->_Host && $this->_Host->isValid()) {
@@ -1524,15 +1419,10 @@ class BootMenu extends FOGBase
                     '/opt/fog/clamav'
                 );
             }
-            if ($StorageNode instanceof StorageNode && $StorageNode->isValid()) {
-                $ftp = $ip;
-            } else {
-                $ftp = $tftp;
-            }
             $chkdsk = $chkdsk == 1 ? 0 : 1;
             $MACs = $this->_Host->getMyMacs();
             $clientMacs = array_filter(
-                (array)$this->parseMacList(
+                (array)self::parseMacList(
                     implode(
                         '|',
                         (array)$MACs
@@ -1774,17 +1664,17 @@ class BootMenu extends FOGBase
                 }
             }
             $params = trim(implode("\n", (array)$params));
-            $Send = array_merge($Send, array($params));
+            $Send = self::fastmerge($Send, array($params));
         }
         switch ($option->get('id')) {
         case 1:
-            $Send = array_merge(
+            $Send = self::fastmerge(
                 $Send,
                 array("$this->_bootexittype || goto MENU")
             );
             break;
         case 2:
-            $Send = array_merge(
+            $Send = self::fastmerge(
                 $Send,
                 array(
                     "$this->_memdisk iso raw",
@@ -1794,7 +1684,7 @@ class BootMenu extends FOGBase
             );
             break;
         case 11:
-            $Send = array_merge(
+            $Send = self::fastmerge(
                 $Send,
                 array(
                     "chain -ar $this->_booturl/ipxe/advanced.php || "
@@ -1804,7 +1694,7 @@ class BootMenu extends FOGBase
             break;
         }
         if (!$params) {
-            $Send = array_merge(
+            $Send = self::fastmerge(
                 $Send,
                 array(
                     "$this->_kernel $this->_loglevel $type",
@@ -1867,7 +1757,7 @@ class BootMenu extends FOGBase
             false,
             ''
         );
-        $Send['head'] = array_merge(
+        $Send['head'] = self::fastmerge(
             array(
                 'cpuid --ext 29 && set arch x86_64 || set arch i386',
                 'goto get_console',
@@ -1897,7 +1787,7 @@ class BootMenu extends FOGBase
                 "registered as {$this->_Host->get(name)}!"
             );
         }
-        $Send['menustart'] = array_merge(
+        $Send['menustart'] = self::fastmerge(
             array(
                 ':MENU',
                 'menu',

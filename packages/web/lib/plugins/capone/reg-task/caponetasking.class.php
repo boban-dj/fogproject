@@ -62,16 +62,13 @@ class CaponeTasking extends FOGBase
             try {
                 $strSetup = "%s|%s|%s|%s|%s|%s|%s";
                 ob_start();
-                $Capones = self::getClass('CaponeManager')
+                foreach ((array)self::getClass('CaponeManager')
                     ->find(
                         array(
                             'key' => trim(base64_decode($_REQUEST['key']))
                         )
-                    );
-                foreach ((array)$Capones as &$Capone) {
-                    if (!$Capone->isValid()) {
-                        continue;
-                    }
+                    ) as &$Capone
+                ) {
                     $Image = $Capone->getImage();
                     if (!$Image->isValid()) {
                         continue;
@@ -90,7 +87,7 @@ class CaponeTasking extends FOGBase
                     $path = $Image->get('path');
                     $osid = $Image->get('osID');
                     $itid = $Image->get('imageTypeID');
-                    $ptid = $Image->get('imagePartitionTypeID');
+                    $ptid = $Image->getPartitionType();
                     $format = $Image->get('format');
                     printf(
                         "%s\n",

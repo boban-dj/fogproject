@@ -58,15 +58,6 @@ class Initiator
             $useragent = $_SERVER['HTTP_USER_AGENT'];
         }
         /**
-         * If we are not a service file
-         * and we have a user agent string
-         * and the Session hasn't been started,
-         * Start the session.
-         */
-        if ($self && $useragent && !isset($_SESSION)) {
-            session_start();
-        }
-        /**
          * Define our base path (/var/www/, /var/www/html/, etc...)
          */
         define('BASEPATH', self::_determineBasePath());
@@ -130,13 +121,126 @@ class Initiator
             )
         );
         /**
-         * Define with extenstions we need to auto load.
-         */
-        spl_autoload_extensions('.class.php,.event.php,.hook.php,.report.php');
-        /**
          * Pass our autoloaded items through our custom loader method.
          */
-        spl_autoload_register(array($this, '_fogLoader'));
+        spl_autoload_register(
+            function ($className) {
+                /**
+                 * Sanity check, if the classname is not a string fail.
+                 */
+                if (!is_string($className)) {
+                    throw new Exception(_('Classname must be a string'));
+                }
+                /**
+                 * If the class exists, we know it's already been loaded.
+                 * Return as we don't need to do anything.
+                 */
+                if (class_exists($className, false)) {
+                    return;
+                }
+                /**
+                 * Ensure the event and hook managers are available.
+                 * Really only needed for the respective class but
+                 * doesn't hurt to have in either case.
+                 */
+                global $EventManager;
+                global $HookManager;
+                /**
+                 * Load the class.
+                 */
+                spl_autoload(
+                    $className,
+                    '.class.php,.event.php,.hook.php,.report.php'
+                );
+            }
+        );
+        /**
+         * If we are not a service file
+         * and we have a user agent string
+         * and the Session hasn't been started,
+         * Start the session.
+         */
+        if ($self && $useragent && !isset($_SESSION)) {
+            session_start();
+        }
+    }
+    /**
+     * Stores session csrf token.
+     *
+     * @param string $key   The session key to store.
+     * @param string $value The value to store.
+     *
+     * @return void
+     */
+    public static function storeInSession($key, $value)
+    {
+        /**
+         * If session isn't set return immediately.
+         */
+        if (!isset($_SESSION)) {
+            return;
+        }
+        $_SESSION[$key] = $value;
+    }
+    /**
+     * Unset the session token.
+     *
+     * @param string $key The key to unset.
+     *
+     * @return void
+     */
+    public static function unsetSession($key)
+    {
+        if (!isset($_SESSION)) {
+            return;
+        }
+        $_SESSION[$key] = ' ';
+        unset($_SESSION[$key]);
+    }
+    /**
+     * Get from session.
+     *
+     * @param string $key The key to get.
+     *
+     * @return string|bool
+     */
+    public static function getFromSession($key)
+    {
+        if (!isset($_SESSION[$key])) {
+            return false;
+        }
+        return $_SESSION[$key];
+    }
+    /**
+     * Generates token for csrf prevention.
+     *
+     * @param string $formname The form name to generate token for.
+     *
+     * @return string
+     */
+    public static function csrfGenToken($formname)
+    {
+        if (function_exists('random_bytes')) {
+            $token = bin2hex(
+                random_bytes(64)
+            );
+        }
+        if (function_exists('mcrypt_create_iv')) {
+            $token = bin2hex(
+                mcrypt_create_iv(
+                    64,
+                    MCRYPT_DEV_URANDOM
+                )
+            );
+        }
+        if (function_exists('openssl_random_pseudo_bytes')) {
+            $token = bin2hex(
+                openssl_random_pseudo_bytes(
+                    64
+                )
+            );
+        }
+        self::storeInSession($formname, $token);
     }
     /**
      * Gets the base path and sets WEB_ROOT constant
@@ -189,15 +293,6 @@ class Initiator
             );
         }
         return $path;
-    }
-    /**
-     * Cleanup after no longer needed
-     *
-     * @return void
-     */
-    public function __destruct()
-    {
-        spl_autoload_unregister(array($this, '_fogLoader'));
     }
     /**
      * Initiates the environment
@@ -359,41 +454,6 @@ class Initiator
         }
     }
     /**
-     * Loads the class files as they're needed
-     *
-     * @param string $className the class to include as called.
-     *
-     * @throws Exception
-     * @return void
-     */
-    private function _fogLoader($className)
-    {
-        /**
-         * Sanity check, if the classname is not a string fail.
-         */
-        if (!is_string($className)) {
-            throw new Exception(_('Classname must be a string'));
-        }
-        /**
-         * If the class exists, we know it's already been loaded.
-         * Return as we don't need to do anything.
-         */
-        if (class_exists($className, false)) {
-            return;
-        }
-        /**
-         * Ensure the event and hook managers are available.
-         * Really only needed for the respective class but
-         * doesn't hurt to have in either case.
-         */
-        global $EventManager;
-        global $HookManager;
-        /**
-         * Load the class.
-         */
-        spl_autoload($className);
-    }
-    /**
      * Cleans the buffer
      *
      * @param string $buffer buffer to clean
@@ -421,31 +481,14 @@ class Initiator
         /**
          * Perform our replace.
          */
-        $buffer = preg_replace($search, $replace, $buffer);
+        $buffer = preg_replace(
+            $search,
+            $replace,
+            $buffer
+        );
         /**
          * Returns the cleaned data.
          */
         return $buffer;
     }
-}
-Initiator::sanitizeItems();
-Initiator::startInit();
-$FOGFTP = new FOGFTP();
-$FOGCore = new FOGCore();
-$DB = FOGCore::getClass('DatabaseManager')->establish()->getDB();
-FOGCore::setSessionEnv();
-$TimeZone = $_SESSION['TimeZone'];
-if (isset($_SESSION['FOG_USER'])) {
-    $currentUser = new User($_SESSION['FOG_USER']);
-} else {
-    $currentUser = new User(0);
-}
-$HookManager = FOGCore::getClass('HookManager');
-$HookManager->load();
-$EventManager = FOGCore::getClass('EventManager');
-$EventManager->load();
-$FOGURLRequests = FOGCore::getClass('FOGURLRequests');
-if (in_array($sub, array('configure', 'authorize', 'requestClientInfo'))) {
-    new DashboardPage();
-    exit;
 }

@@ -141,14 +141,14 @@ class StorageNode extends FOGController
      */
     public function getNodeFailure($Host)
     {
-        $Fails = self::getClass('NodeFailureManager')
+        foreach ((array)self::getClass('NodeFailureManager')
             ->find(
                 array(
                     'storagenodeID' => $this->get('id'),
                     'hostID' => $Host,
                 )
-            );
-        foreach ((array) $Fails as &$Failed) {
+            ) as &$Failed
+        ) {
             $curr = self::niceDate();
             $prev = $Failed->get('failureTime');
             $prev = self::niceDate($prev);
@@ -172,12 +172,6 @@ class StorageNode extends FOGController
             $this->get('ip'),
             '%s'
         );
-        $test = self::$FOGURLRequests->isAvailable($url);
-        $test = array_shift($test);
-        if (false === $test) {
-            $this->set('logfiles', array());
-            return;
-        }
         $paths = array(
             '/var/log/nginx',
             '/var/log/httpd',
@@ -188,18 +182,13 @@ class StorageNode extends FOGController
             '/var/log/php5-fpm',
             '/var/log/php5.6-fpm',
         );
-        $urls = array();
-        foreach ($paths as &$path) {
-            $urls[] = sprintf(
-                $url,
-                urlencode($path)
-            );
-            unset($path);
-        }
-        unset($paths);
-        $paths = self::$FOGURLRequests->process($urls);
+        $url = sprintf(
+            $url,
+            urlencode(implode(':', $paths))
+        );
+        $paths = self::$FOGURLRequests->process($url);
         foreach ((array) $paths as $index => &$response) {
-            $tmppath = array_merge(
+            $tmppath = self::fastmerge(
                 (array) $tmppath,
                 (array) json_decode($response, true)
             );
@@ -222,15 +211,6 @@ class StorageNode extends FOGController
             'http://%s/fog/status/getfiles.php',
             $this->get('ip')
         );
-        $test = self::$FOGURLRequests->isAvailable($url);
-        $test = array_shift($test);
-        if ($test === false) {
-            $this
-                ->set('images', array())
-                ->set('logfiles', array())
-                ->set('snapinfiles', array());
-            return;
-        }
         $keys = array(
             'images' => urlencode($this->get('path')),
             'snapinfiles' => urlencode($this->get('snapinpath'))
@@ -336,7 +316,7 @@ class StorageNode extends FOGController
         $countTasks = 0;
         $usedtasks = $this->get('usedtasks');
         $findTasks = array(
-            'stateID' => $this->getProgressState(),
+            'stateID' => self::getProgressState(),
             'storagenodeID' => $this->get('id'),
             'typeID' => $usedtasks,
         );
@@ -351,7 +331,7 @@ class StorageNode extends FOGController
                 'taskID' => self::getSubObjectIDs(
                     'Task',
                     array(
-                        'stateID' => $this->getProgressState(),
+                        'stateID' => self::getProgressState(),
                         'typeID' => 8,
                     )
                 ),
@@ -372,7 +352,7 @@ class StorageNode extends FOGController
         $countTasks = 0;
         $usedtasks = $this->get('usedtasks');
         $findTasks = array(
-            'stateID' => $this->getQueuedStates(),
+            'stateID' => self::getQueuedStates(),
             'storagenodeID' => $this->get('id'),
             'typeID' => $usedtasks,
         );
@@ -387,7 +367,7 @@ class StorageNode extends FOGController
                 'taskID' => self::getSubObjectIDs(
                     'Task',
                     array(
-                        'stateID' => $this->getQueuedStates(),
+                        'stateID' => self::getQueuedStates(),
                         'typeID' => 8,
                     )
                 ),

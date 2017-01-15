@@ -55,7 +55,7 @@ class HostManagementPage extends FOGPage
                 ) => self::$foglang['General'],
             );
             if (!$this->obj->get('pending')) {
-                $this->subMenu = array_merge(
+                $this->subMenu = self::fastmerge(
                     $this->subMenu,
                     array(
                         sprintf(
@@ -65,7 +65,7 @@ class HostManagementPage extends FOGPage
                     )
                 );
             }
-            $this->subMenu = array_merge(
+            $this->subMenu = self::fastmerge(
                 $this->subMenu,
                 array(
                     sprintf(
@@ -256,12 +256,9 @@ class HostManagementPage extends FOGPage
          * @return void
          */
         self::$returnData = function (&$Host) {
-            if (!$Host->isValid()) {
-                return;
-            }
             $this->data[] = array(
                 'id' => $Host->get('id'),
-                'deployed' => $this->formatTime(
+                'deployed' => self::formatTime(
                     $Host->get('deployed'),
                     'Y-m-d H:i:s'
                 ),
@@ -562,29 +559,17 @@ class HostManagementPage extends FOGPage
             if (!$Host->save()) {
                 throw new Exception(_('Host create failed'));
             }
-            self::$HookManager
-                ->processEvent(
-                    'HOST_ADD_SUCCESS',
-                    array(
-                        'Host' => &$Host
-                    )
-                );
-            $this->setMessage(_('Host added'));
-            $url = sprintf(
-                '?node=%s&sub=edit&id=%s',
-                $this->node,
-                $Host->get('id')
-            );
+            $hook = 'HOST_ADD_SUCCESS';
+            $msg = _('Host added');
         } catch (Exception $e) {
-            self::$HookManager
-                ->processEvent(
-                    'HOST_ADD_FAIL',
-                    array(
-                        'Host' => &$Host
-                    )
-                );
-            $this->setMessage($e->getMessage());
+            $hook = 'HOST_ADD_FAIL';
+            $msg = $e->getMessage();
         }
+        self::$HookManager
+            ->processEvent(
+                $hook,
+                array('HOst' => &$Host)
+            );
         unset(
             $Host,
             $passlegacy,
@@ -598,6 +583,7 @@ class HostManagementPage extends FOGPage
             $MAC,
             $hostName
         );
+        $this->setMessage($msg);
         $this->redirect($this->formAction);
     }
     /**
@@ -619,7 +605,13 @@ class HostManagementPage extends FOGPage
             } else {
                 $this->setMessage(_('Host approval failed.'));
             }
-            $this->redirect($this->formAction);
+            $this->redirect(
+                sprintf(
+                    '?node=%s&sub=edit&id=%s',
+                    $this->node,
+                    $_REQUEST['id']
+                )
+            );
         }
         if ($this->obj->get('pending')) {
             printf(
@@ -1892,30 +1884,70 @@ class HostManagementPage extends FOGPage
             $UserLogins = self::getClass('UserTrackingManager')
                 ->find(
                     array(
-                        'id' => $this->obj->get('users')
-                    )
+                        'hostID' => $this->obj->get('id'),
+                        'date' => $_REQUEST['dte'],
+                        'action' => array(
+                            '',
+                            0,
+                            1
+                        )
+                    ),
+                    'AND',
+                    array('username','datetime','action'),
+                    array('ASC','ASC','DESC')
                 );
-            foreach ((array)$UserLogins as &$UserLogin) {
-                if (!$UserLogin->isValid()) {
-                    continue;
+            $Data = array();
+            foreach ((array)$UserLogins as &$Login) {
+                $time = self::niceDate($Login->get('datetime'))
+                    ->format('U');
+                if (!isset($Data[$Login->get('username')])) {
+                    $Data[$Login->get('username')] = array();
                 }
-                if ($UserLogin->get('date') == $_REQUEST['dte']) {
-                    $this->data[] = array(
-                        'action' => (
-                            $UserLogin->get('action') == 1 ?
-                            _('Login') :
-                            (
-                                $UserLogin->get('action') == 0 ?
-                                _('Logout') :
-                                ''
+                if (array_key_exists('login', $Data[$Login->get('username')])) {
+                    if ($Login->get('action') > 0) {
+                        $this->data[] = array(
+                            'action' => _('Logout'),
+                            'user_name' => $Login->get('username'),
+                            'user_time' => (
+                                self::niceDate()
+                                ->setTimestamp($time - 1)
+                                ->format('Y-m-d H:i:s')
+                            ),
+                            'user_desc' => sprintf(
+                                '%s.<br/><small>%s.</small>',
+                                _('Logout not found'),
+                                _('Setting logout to one second prior to next login')
                             )
-                        ),
-                        'user_name' => $UserLogin->get('username'),
-                        'user_time' => $UserLogin->get('datetime'),
-                        'user_desc' => $UserLogin->get('description'),
-                    );
+                        );
+                        $Data[$Login->get('username')] = array();
+                    }
                 }
-                unset($UserLogin);
+                if ($Login->get('action') > 0) {
+                    $Data[$Login->get('username')]['login'] = true;
+                    $this->data[] = array(
+                        'action' => _('Login'),
+                        'user_name' => $Login->get('username'),
+                        'user_time' => (
+                            self::niceDate()
+                            ->setTimestamp($time)
+                            ->format('Y-m-d H:i:s')
+                        ),
+                        'user_desc' => $Login->get('description')
+                    );
+                } elseif ($Login->get('action') < 1) {
+                    $this->data[] = array(
+                        'action' => _('Logout'),
+                        'user_name' => $Login->get('username'),
+                        'user_time' => (
+                            self::niceDate()
+                            ->setTimestamp($time)
+                            ->format('Y-m-d H:i:s')
+                        ),
+                        'user_desc' => $Login->get('description')
+                    );
+                    $Data[$Login->get('username')] = array();
+                }
+                unset($Login);
             }
             self::$HookManager
                 ->processEvent(
@@ -1989,7 +2021,7 @@ class HostManagementPage extends FOGPage
             }
             $start = $log->get('start');
             $end = $log->get('finish');
-            if (!$this->validDate($start) || !$this->validDate($end)) {
+            if (!self::validDate($start) || !self::validDate($end)) {
                 continue;
             }
             $diff = $this->diff($start, $end);
@@ -2089,8 +2121,8 @@ class HostManagementPage extends FOGPage
                 )
             );
         $doneStates = array(
-            $this->getCompleteState(),
-            $this->getCancelledState()
+            self::getCompleteState(),
+            self::getCancelledState()
         );
         foreach ((array)$SnapinTasks as &$SnapinTask) {
             if (!$SnapinTask->isValid()) {
@@ -2102,24 +2134,24 @@ class HostManagementPage extends FOGPage
             }
             $start = self::niceDate($SnapinTask->get('checkin'));
             $end = self::niceDate($SnapinTask->get('complete'));
-            if (!$this->validDate($start)) {
+            if (!self::validDate($start)) {
                 continue;
             }
             if (!in_array($SnapinTask->get('stateID'), $doneStates)) {
                 $diff = _('Snapin task not completed');
-            } elseif (!$this->validDate($end)) {
+            } elseif (!self::validDate($end)) {
                 $diff = _('No complete time recorded');
             } else {
                 $diff = $this->diff($start, $end);
             }
             $this->data[] = array(
                 'snapin_name' => $Snapin->get('name'),
-                'snapin_start' => $this->formatTime(
+                'snapin_start' => self::formatTime(
                     $SnapinTask->get('checkin'), 'Y-m-d H:i:s'
                 ),
                 'snapin_end' => sprintf(
                     '<span class="icon" title="%s">%s</span>',
-                    $this->formatTime(
+                    self::formatTime(
                         $SnapinTask->get('complete'), 'Y-m-d H:i:s'
                     ),
                     self::getClass(
@@ -2144,15 +2176,6 @@ class HostManagementPage extends FOGPage
             );
         $this->render();
         echo '</div></div>';
-    }
-    /**
-     * Returns from ajax callers.
-     *
-     * @return void
-     */
-    public function editAjax()
-    {
-        exit;
     }
     /**
      * Updates the host when form is submitted
@@ -2194,7 +2217,7 @@ class HostManagementPage extends FOGPage
                         _('MAC Address is required')
                     );
                 }
-                $mac = $this->parseMacList($_REQUEST['mac']);
+                $mac = self::parseMacList($_REQUEST['mac']);
                 if (count($mac) < 1) {
                     throw new Exception(
                         _('No valid macs returned')
@@ -2248,7 +2271,7 @@ class HostManagementPage extends FOGPage
                 if ($primac != $setmac) {
                     $this->obj->addPriMAC($mac->__toString());
                 }
-                $addmacs = $this->parseMacList($_REQUEST['additionalMACs']);
+                $addmacs = self::parseMacList($_REQUEST['additionalMACs']);
                 $macs = array();
                 foreach ((array)$addmacs as &$addmac) {
                     if (!$addmac->isValid()) {
@@ -2492,24 +2515,18 @@ class HostManagementPage extends FOGPage
             if ($_REQUEST['tab'] == 'host-general') {
                 $this->obj->ignore($_REQUEST['igimage'], $_REQUEST['igclient']);
             }
-            self::$HookManager
-                ->processEvent(
-                    'HOST_EDIT_SUCCESS',
-                    array(
-                        'Host' => &$this->obj
-                    )
-                );
-            $this->setMessage('Host updated!');
+            $hook = 'HOST_EDIT_SUCCESS';
+            $msg = _('Host updated');
         } catch (Exception $e) {
-            self::$HookManager
-                ->processEvent(
-                    'HOST_EDIT_FAIL',
-                    array(
-                        'Host' => &$this->obj
-                    )
-                );
-            $this->setMessage($e->getMessage());
+            $hook = 'HOST_EDIT_FAIL';
+            $msg = $e->getMessage();
         }
+        self::$HookManager
+            ->processEvent(
+                $hook,
+                array('Host' => &$this->obj)
+            );
+        $this->setMessage($msg);
         $this->redirect($this->formAction);
     }
     /**
@@ -2522,7 +2539,9 @@ class HostManagementPage extends FOGPage
         try {
             $Group = self::getClass('Group', $_REQUEST['group']);
             if (!empty($_REQUEST['group_new'])) {
-                $Group->set('name', $_REQUEST['group_new'])->load('name');
+                $Group
+                    ->set('name', $_REQUEST['group_new'])
+                    ->load('name');
             }
             $Group->addHost($_REQUEST['hostIDArray']);
             if (!$Group->save()) {
@@ -2556,49 +2575,48 @@ class HostManagementPage extends FOGPage
                     'hostID' => $this->obj->get('id'),
                     'date' => $_REQUEST['dte'],
                     'action' => array(
-                        null,
                         '',
                         0,
                         1
                     )
                 ),
                 'AND',
-                'date',
-                'DESC'
+                array('username','datetime','action'),
+                array('ASC','ASC','DESC')
             );
+        $data = null;
+        $Data = array();
         foreach ((array)$UserTracks as &$Login) {
-            if (!$Login->isValid()) {
-                continue;
-            }
-            if ($Login->get('username') == 'Array') {
-                continue;
-            }
             $time = self::niceDate($Login->get('datetime'))
                 ->format('U');
-            if (!$Data[$Login->get('username')]) {
-                $Data[$Login->get('username')] = array(
-                    'user' => $Login->get('username'),
-                    'min' => $MainDate,
-                    'max' => $MainDate_1
-                );
+            $Data[$Login->get('username')]['user'] = $Login->get('username');
+            $Data[$Login->get('username')]['min'] = $MainDate;
+            $Data[$Login->get('username')]['max'] = $MainDate_1;
+            if (array_key_exists('login', $Data[$Login->get('username')])) {
+                if ($Login->get('action') > 0) {
+                    $Data[$Login->get('username')]['logout'] = (int)$time - 1;
+                    $data[] = $Data[$Login->get('username')];
+                    $Data[$Login->get('username')] = array(
+                        'user' => $Login->get('username'),
+                        'min' => $MainDate,
+                        'max' => $MainDate_1
+                    );
+                } elseif ($Login->get('action') < 1) {
+                    $Data[$Login->get('username')]['logout'] = (int)$time;
+                    $data[] = $Data[$Login->get('username')];
+                    $Data[$Login->get('username')] = array(
+                        'user' => $Login->get('username'),
+                        'min' => $MainDate,
+                        'max' => $MainDate_1
+                    );
+                }
             }
-            if ($Login->get('action')) {
-                $Data[$Login->get('username')]['login'] = $time;
-            }
-            if (array_key_exists('login', $Data[$Login->get('username')])
-                && !$Login->get('action')
-            ) {
-                $Data[$Login->get('username')]['logout'] = $time;
-            }
-            if (array_key_exists('login', $Data[$Login->get('username')])
-                && array_key_exists('logout', $Data[$Login->get('username')])
-            ) {
-                $data[] = $Data[$Login->get('username')];
-                unset($Data[$Login->get('username')]);
+            if ($Login->get('action') > 0) {
+                $Data[$Login->get('username')]['login'] = (int)$time;
             }
             unset($Login);
         }
-        unset($Users);
+        unset($UserTracks);
         echo json_encode($data);
         exit;
     }

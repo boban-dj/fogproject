@@ -98,9 +98,9 @@ class Snapin extends FOGController
             'SnapinJob',
             array(
                 'id' => $snapinJobIDs,
-                'stateID' => array_merge(
-                    $this->getQueuedStates(),
-                    (array) $this->getProgressState()
+                'stateID' => self::fastmerge(
+                    self::getQueuedStates(),
+                    (array)self::getProgressState()
                 ),
             )
         );
@@ -151,7 +151,7 @@ class Snapin extends FOGController
             $primary = array_shift($primary);
             $this->setPrimaryGroup($primary);
         }
-        return $this;
+        return $this->load();
     }
     /**
      * Deletes the snapin file.
@@ -163,17 +163,14 @@ class Snapin extends FOGController
         if ($this->get('protected')) {
             throw new Exception(self::$foglang['ProtectedSnapin']);
         }
-        $StorageNodes = self::getClass('StorageNodeManager')
+        foreach ((array)self::getClass('StorageNodeManager')
             ->find(
                 array(
                     'storagegroupID' => $this->get('storagegroups'),
-                    'isEnabled' => 1,
+                    'isEnabled' => 1
                 )
-            );
-        foreach ((array) $StorageNodes as &$StorageNode) {
-            if (!$StorageNode->isValid()) {
-                continue;
-            }
+            ) as &$StorageNode
+        ) {
             $ftppath = $StorageNode->get('snapinpath');
             $ftppath = trim($ftppath, '/');
             $deleteFile = sprintf(
@@ -410,6 +407,20 @@ class Snapin extends FOGController
      */
     public function setPrimaryGroup($groupID)
     {
+        $exists = self::getSubObjectIDs(
+            'SnapinGroupAssociation',
+            array(
+                'snapinID' => $this->get('id'),
+                'storagegroupID' => $groupID
+            ),
+            'storagegroupID'
+        );
+        if (count($exists) < 1) {
+            self::getClass('SnapinGroupAssociation')
+                ->set('snapinID', $this->get('id'))
+                ->set('storagegroupID', $groupID)
+                ->save();
+        }
         /**
          * Unset all current groups to non-primary
          */

@@ -87,19 +87,20 @@ class AddLocationGroup extends Hook
         if ($node != 'group') {
             return;
         }
-        $Locations = self::getClass('LocationAssociationManager')->find(
+        $Locations = self::getSubObjectIDs(
+            'LocationAssociation',
             array(
                 'hostID' => $arguments['Group']->get('hosts')
-            )
+            ),
+            'locationID'
         );
-        foreach ((array)$Locations as &$Location) {
-            if (!$Location->isValid()) {
-                continue;
-            }
-            $locID = $Location->getLocation()->get('id');
-            unset($Location);
-            break;
+        $cnt = count($Locations);
+        if ($cnt !== 1) {
+            $locID = 0;
+        } else {
+            $locID = array_shift($Locations);
         }
+        unset($Locations);
         echo '<!-- Location --><div id="group-location">';
         printf(
             '<h2>%s: %s</h2>',
@@ -149,16 +150,15 @@ class AddLocationGroup extends Hook
         if ($tab != 'group-location') {
             return;
         }
-        if (!($_REQUEST['location']
+        self::getClass('LocationAssociationManager')->destroy(
+            array(
+                'hostID' => $arguments['Group']->get('hosts')
+            )
+        );
+        if ($_REQUEST['location']
             && is_numeric($_REQUEST['location'])
-            && $_REQUEST['location'] > 0)
+            && $_REQUEST['location'] > 0
         ) {
-            self::getClass('LocationAssociationManager')->destroy(
-                array(
-                    'hostID' => $arguments['Group']->get('hosts')
-                )
-            );
-        } else {
             $insert_fields = array('locationID','hostID');
             $insert_values = array();
             foreach ((array)$arguments['Group']->get('hosts') as &$hostID) {

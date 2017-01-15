@@ -481,11 +481,10 @@ class PluginManagementPage extends FOGPage
                         array(),
                         array(),
                     );
-                    foreach (self::getClass('CaponeManager')->find() as &$Capone) {
-                        if (!$Capone->isValid()) {
-                            continue;
-                        }
-                        $Image = self::getClass('Image', $Capone->get('imageID'));
+                    foreach ((array)self::getClass('CaponeManager')
+                        ->find() as &$Capone
+                    ) {
+                        $Image = $Capone->getImage();
                         if (!$Image->isValid()) {
                             continue;
                         }
@@ -594,7 +593,10 @@ class PluginManagementPage extends FOGPage
                 throw new Exception(_('Settings Updated'));
             }
             if (isset($_REQUEST['addass'])) {
-                $Image = self::getClass('Image', $_REQUEST['image']);
+                $Image = new Image($_REQUEST['image']);
+                if (!$Image->isValid()) {
+                    throw new Exception(_('Must have an image associated'));
+                }
                 $OS = $Image->getOS();
                 $Capone = self::getClass('Capone')
                     ->set('imageID', $_REQUEST['image'])

@@ -26,6 +26,12 @@
 class RegisterClient extends FOGClient implements FOGClientSend
 {
     /**
+     * Module associated shortname
+     *
+     * @var string
+     */
+    public $shortName = 'hostregister';
+    /**
      * Function returns data that will be translated to json
      *
      * @return array
@@ -33,7 +39,7 @@ class RegisterClient extends FOGClient implements FOGClientSend
     public function json()
     {
         $maxPending = 0;
-        $MACs = $this->getHostItem(
+        $MACs = self::getHostItem(
             true,
             false,
             false,
@@ -93,7 +99,7 @@ class RegisterClient extends FOGClient implements FOGClientSend
         if (count($MACs) > $maxPending + 1) {
             throw new Exception(_('Too many MACs'));
         }
-        $MACs = $this->parseMacList(
+        $MACs = self::parseMacList(
             $MACs,
             false,
             true
@@ -129,7 +135,7 @@ class RegisterClient extends FOGClient implements FOGClientSend
     public function send()
     {
         $maxPending = 0;
-        $MACs = $this->getHostItem(
+        $MACs = self::getHostItem(
             true,
             false,
             true,
@@ -156,7 +162,7 @@ class RegisterClient extends FOGClient implements FOGClientSend
         if (count($MACs) > $maxPending + 1) {
             throw new Exception(_('Too many MACs'));
         }
-        $MACs = $this->parseMacList(
+        $MACs = self::parseMacList(
             $MACs,
             false,
             true

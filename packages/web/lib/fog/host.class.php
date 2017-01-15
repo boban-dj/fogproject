@@ -177,11 +177,6 @@ class Host extends FOGController
                 $value = new SnapinJob($value);
             }
             break;
-        case 'inventory':
-            if (!($value instanceof Inventory)) {
-                $value = new Inventory($value);
-            }
-            break;
         case 'task':
             if (!($value instanceof Task)) {
                 $value = new Task($value);
@@ -394,7 +389,7 @@ class Host extends FOGController
                 'mac'
             );
             foreach ((array)$DBPriMACs as &$mac) {
-                if ($this->arrayStrpos($mac, $RealAddMACs) !== false) {
+                if (self::arrayStrpos($mac, $RealAddMACs) !== false) {
                     throw new Exception(
                         _('Cannot add Primary mac as additional mac')
                     );
@@ -493,7 +488,7 @@ class Host extends FOGController
                 'mac'
             );
             foreach ((array)$DBPriMACs as &$mac) {
-                if ($this->arrayStrpos($mac, $RealPendMACs)) {
+                if (self::arrayStrpos($mac, $RealPendMACs)) {
                     throw new Exception(
                         _('Cannot add a pre-existing primary mac')
                     );
@@ -607,12 +602,12 @@ class Host extends FOGController
             $objNeeded = false;
             unset($DBPowerManagementIDs, $RemovePowerManagementIDs);
         }
-        $this
+        return $this
             ->assocSetter('Module')
             ->assocSetter('Printer')
             ->assocSetter('Snapin')
-            ->assocSetter('Group');
-        return $this;
+            ->assocSetter('Group')
+            ->load();
     }
     /**
      * Defines if the host is valid
@@ -1010,9 +1005,9 @@ class Host extends FOGController
         $sjID = self::getSubObjectIDs(
             'SnapinJob',
             array(
-                'stateID' => array_merge(
-                    $this->getQueuedStates(),
-                    (array)$this->getProgressState()
+                'stateID' => self::fastmerge(
+                    self::getQueuedStates(),
+                    (array)self::getProgressState()
                 ),
                 'hostID' => $this->get('id')
             )
@@ -1028,9 +1023,9 @@ class Host extends FOGController
     protected function loadTask()
     {
         $find['hostID'] = $this->get('id');
-        $find['stateID'] = array_merge(
-            $this->getQueuedStates(),
-            (array)$this->getProgressState()
+        $find['stateID'] = self::fastmerge(
+            self::getQueuedStates(),
+            (array)self::getProgressState()
         );
         $types = array(
             'up',
@@ -1080,9 +1075,9 @@ class Host extends FOGController
     public function getActiveTaskCount()
     {
         $find = array(
-            'stateID' => array_merge(
-                $this->getQueuedStates(),
-                (array)$this->getProgressState()
+            'stateID' => self::fastmerge(
+                self::getQueuedStates(),
+                (array)self::getProgressState()
             ),
             'hostID' => $this->get('id')
         );
@@ -1098,87 +1093,6 @@ class Host extends FOGController
     public function getOptimalStorageNode()
     {
         return $this->get('optimalStorageNode');
-    }
-    /**
-     * Checks if the image exists
-     *
-     * @param int $taskTypeID the task type id
-     *
-     * @return bool
-     */
-    public function checkIfExist($taskTypeID)
-    {
-        return true;
-        $TaskType = new TaskType($taskTypeID);
-        $isCapture = $TaskType->isCapture();
-        if ($isCapture) {
-            return true;
-        }
-        $Image = $this->getImage();
-        self::$HookManager
-            ->processEvent(
-                'HOST_NEW_SETTINGS',
-                array(
-                    'Host' => &$this,
-                    'StorageNode' => &$StorageNode,
-                    'StorageGroup' => &$StorageGroup,
-                    'TaskType' => &$TaskType
-                )
-            );
-        if (!$StorageGroup || !$StorageGroup->isValid()) {
-            $StorageGroupIDs = self::getSubObjectIDs(
-                'ImageAssociation',
-                array('imageID' => $this->getImage()->get('id')),
-                'storagegroupID'
-            );
-        } else {
-            $StorageGroupIDs = $StorageGroup->get('id');
-        }
-        if (!$StorageNode || !$StorageNode->isValid()) {
-            if (!$StorageGroup || !$StorageGroup->isValid()) {
-                $Groups = self::getClass('StorageGroupManager')
-                    ->find(array('id' => $StorageGroupIDs));
-                $ennodeids = array();
-                foreach ((array)$Groups as &$Group) {
-                    if (!$Group->isValid()) {
-                        continue;
-                    }
-                    $ennodeids = array_merge(
-                        (array)$ennodeids,
-                        (array)$Group->get('enablednodes')
-                    );
-                    unset($Group);
-                }
-                $StorageNodes = self::getClass('StorageNodeManager')
-                    ->find(
-                        array('id' => $ennodeids)
-                    );
-            } else {
-                $StorageNodes = self::getClass('StorageNodeManager')
-                    ->find(
-                        array('id' => $StorageGroup->get('enablednodes'))
-                    );
-            }
-        } else {
-            $StorageNodes = array($StorageNode);
-        }
-        $hasImageIDs = array();
-        foreach ((array)$StorageNodes as &$StorageNode) {
-            if (!$StorageNode->isValid()) {
-                continue;
-            }
-            $hasImageIDs = array_merge(
-                (array)$hasImageIDs,
-                (array)$StorageNode->get('images')
-            );
-            unset($StorageNode);
-        }
-        $hasImageIDs = array_unique($hasImageIDs);
-        $hasImageIDs = array_filter($hasImageIDs);
-        if (!in_array($this->getImage()->get('id'), $hasImageIDs)) {
-            throw new Exception(_('Image does not exist on any node'));
-        }
-        return true;
     }
     /**
      * Creates the tasking so I don't have to keep typing it in for each element.
@@ -1213,7 +1127,7 @@ class Host extends FOGController
             ->set('createdBy', $username)
             ->set('hostID', $this->get('id'))
             ->set('isForced', 0)
-            ->set('stateID', $this->getQueuedState())
+            ->set('stateID', self::getQueuedState())
             ->set('typeID', $taskTypeID)
             ->set('storagegroupID', $groupID)
             ->set('storagenodeID', $memID)
@@ -1243,9 +1157,9 @@ class Host extends FOGController
             'SnapinJob',
             array(
                 'hostID' => $this->get('id'),
-                'stateID' => array_merge(
-                    $this->getQueuedStates(),
-                    (array)$this->getProgressState()
+                'stateID' => self::fastmerge(
+                    self::getQueuedStates(),
+                    (array)self::getProgressState()
                 )
             )
         );
@@ -1253,30 +1167,30 @@ class Host extends FOGController
             ->update(
                 array(
                     'jobID' => $SnapinJobs,
-                    'stateID' => array_merge(
-                        $this->getQueuedStates(),
-                        (array)$this->getProgressState()
+                    'stateID' => self::fastmerge(
+                        self::getQueuedStates(),
+                        (array)self::getProgressState()
                     )
                 ),
                 '',
                 array(
                     'return' => -9999,
                     'details' => _('Cancelled due to new tasking.'),
-                    'stateID' => $this->getCancelledState()
+                    'stateID' => self::getCancelledState()
                 )
             );
         self::getClass('SnapinJobManager')
             ->update(
                 array('id' => $SnapinJobs),
                 '',
-                array('stateID' => $this->getCancelledState())
+                array('stateID' => self::getCancelledState())
             );
         $AllTasks = self::getSubObjectIDs(
             'Task',
             array(
-                'stateID' => array_merge(
-                    $this->getQueuedStates(),
-                    (array)$this->getProgressState()
+                'stateID' => self::fastmerge(
+                    self::getQueuedStates(),
+                    (array)self::getProgressState()
                 ),
                 'hostID' => $this->get('id')
             )
@@ -1291,7 +1205,7 @@ class Host extends FOGController
                     )
                 ),
                 '',
-                array('stateID' => $this->getCancelledState())
+                array('stateID' => self::getCancelledState())
             );
     }
     /**
@@ -1318,7 +1232,7 @@ class Host extends FOGController
             if (!$SnapinJob->isValid()) {
                 $SnapinJob
                     ->set('hostID', $this->get('id'))
-                    ->set('stateID', $this->getQueuedState())
+                    ->set('stateID', self::getQueuedState())
                     ->set(
                         'createdTime',
                         self::niceDate()
@@ -1508,9 +1422,9 @@ class Host extends FOGController
                     return $MulticastSessions;
                 };
                 $assoc = false;
-                $showStates = array_merge(
-                    $this->getQueuedStates(),
-                    (array)$this->getProgressState()
+                $showStates = self::fastmerge(
+                    self::getQueuedStates(),
+                    (array)self::getProgressState()
                 );
                 if ($sessionjoin) {
                     $MCSessions = self::getClass('MulticastSessionsManager')
@@ -1568,7 +1482,7 @@ class Host extends FOGController
                             ) {
                                 $randomnumber = mt_rand(24576, 32766)*2;
                             }
-                            $this->setSetting(
+                            self::setSetting(
                                 'FOG_UDPCAST_STARTINGPORT',
                                 $randomnumber
                             );
@@ -1672,7 +1586,7 @@ class Host extends FOGController
     public function addAddMAC($addArray, $pending = false)
     {
         $addArray = array_map('strtolower', (array)$addArray);
-        $addArray = $this->parseMacList($addArray);
+        $addArray = self::parseMacList($addArray);
         $addTo = $pending ? 'pendingMACs' : 'additionalMACs';
         foreach ((array)$addArray as &$mac) {
             $this->add($addTo, $mac);
@@ -1756,7 +1670,7 @@ class Host extends FOGController
      */
     public function addPriMAC($mac)
     {
-        $mac = $this->parseMacList($mac);
+        $mac = self::parseMacList($mac);
         if (count($mac) < 1) {
             throw new Exception(_('No viable macs to use'));
         }

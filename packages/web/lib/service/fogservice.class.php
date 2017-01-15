@@ -103,18 +103,15 @@ abstract class FOGService extends FOGBase
     protected function checkIfNodeMaster()
     {
         self::getIPAddress();
-        $Nodes = self::getClass('StorageNodeManager')
+        $StorageNodes = array();
+        foreach ((array)self::getClass('StorageNodeManager')
             ->find(
                 array(
                     'isMaster' => 1,
-                    'isEnabled' => 1,
+                    'isEnabled' => 1
                 )
-            );
-        $StorageNodes = array();
-        foreach ((array)$Nodes as &$StorageNode) {
-            if (!$StorageNode->isValid()) {
-                continue;
-            }
+            ) as &$StorageNode
+        ) {
             $ip = self::$FOGCore->resolveHostname(
                 $StorageNode->get('ip')
             );
@@ -220,27 +217,8 @@ abstract class FOGService extends FOGBase
      */
     public function outall($string)
     {
-        self::out("$string\n", static::$dev);
         self::wlog("$string\n", static::$log);
         return;
-    }
-    /**
-     * Outputs the string to the tty/device
-     *
-     * @param string $string the string to output
-     * @param string $device the place to output
-     *
-     * @return void
-     */
-    protected static function out($string, $device)
-    {
-        if (!$fh = fopen($device, 'wb')) {
-            return;
-        }
-        if (fwrite($fh, "$string\n") === false) {
-            return;
-        }
-        fclose($fh);
     }
     /**
      * Get's the current datetime
@@ -271,13 +249,8 @@ abstract class FOGService extends FOGBase
                 unlink($path);
             }
         }
-        if (!$fh = fopen($path, 'ab')) {
-            self::out(
-                "\n * Error: Unable to open file: $path\n",
-                static::$dev
-            );
-        }
-        $test = fwrite(
+        $fh = fopen($path, 'ab');
+        fwrite(
             $fh,
             sprintf(
                 '[%s] %s',
@@ -285,12 +258,6 @@ abstract class FOGService extends FOGBase
                 $string
             )
         );
-        if (false === $test) {
-            self::out(
-                "\n * Error: Unable to write to file: $path\n",
-                static::$dev
-            );
-        }
         fclose($fh);
     }
     /**
@@ -333,14 +300,6 @@ abstract class FOGService extends FOGBase
                 )
             );
         }
-        self::out(
-            '',
-            static::$dev
-        );
-        self::out(
-            '+---------------------------------------------------------',
-            static::$dev
-        );
     }
     /**
      * Replicates data without having to keep repeating
@@ -382,7 +341,9 @@ abstract class FOGService extends FOGBase
             $findWhere['isMaster'] = 1;
         }
         $StorageNode = self::getClass('StorageNode', $myStorageNodeID);
-        if (!$StorageNode->isValid() || !$StorageNode->get('isMaster')) {
+        if (!$StorageNode->isValid()
+            || !$StorageNode->get('isMaster')
+        ) {
             throw new Exception(
                 sprintf(
                     ' * %s',
@@ -466,17 +427,14 @@ abstract class FOGService extends FOGBase
             $myFile = basename($Obj->get($getFileOfItemField));
             $myAdd = "$myDir$myFile";
             $myAddItem = false;
-            $PotentialNodes = self::getClass('StorageNodeManager')
+            foreach ((array)self::getClass('StorageNodeManager')
                 ->find(
                     array(
                         'id' => $PotentialStorageNodes
                     )
-                );
-            foreach ((array)$PotentialNodes as $i => &$PotentialStorageNode) {
+                ) as $i => &$PotentialStorageNode
+            ) {
                 usleep(50000);
-                if (!$PotentialStorageNode->isValid()) {
-                    continue;
-                }
                 $groupID = $PotentialStorageNode->get('storagegroupID');
                 if ($master
                     && $groupID == $myStorageGroupID
@@ -666,8 +624,13 @@ abstract class FOGService extends FOGBase
                     continue;
                 }
                 $logname = sprintf(
-                    '%s.transfer.%s.log',
-                    static::$log,
+                    '%s.%s.transfer.%s.log',
+                    substr(
+                        static::$log,
+                        0,
+                        -4
+                    ),
+                    $Obj->get('name'),
                     $nodename
                 );
                 if (!$i) {
@@ -750,6 +713,7 @@ abstract class FOGService extends FOGBase
         } else {
             $log = static::$log;
         }
+        self::wlog(_('Task started'), $logname);
         $descriptor = array(
             0 => array('pipe', 'r'),
             1 => array('file', $logname, 'a'),

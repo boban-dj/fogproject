@@ -85,7 +85,9 @@ class Group extends FOGController
     public function save()
     {
         parent::save();
-        return $this->assocSetter('Group', 'host');
+        return $this
+            ->assocSetter('Group', 'host')
+            ->load();
     }
     /**
      * Returns the host count.
@@ -386,9 +388,9 @@ class Group extends FOGController
         if (!$Image->isValid() && is_numeric($imageID)) {
             throw new Exception(_('Select a valid image'));
         }
-        $states = array_merge(
-            $this->getQueuedStates(),
-            (array) $this->getProgressState()
+        $states = self::fastmerge(
+            self::getQueuedStates(),
+            (array)self::getProgressState()
         );
         $TaskCount = self::getClass('TaskManager')
             ->count(
@@ -448,9 +450,9 @@ class Group extends FOGController
             ->count(
                 array(
                     'hostID' => $hostids,
-                    'stateID' => array_merge(
-                        $this->getQueuedStates(),
-                        (array) $this->getProgressState()
+                    'stateID' => self::fastmerge(
+                        self::getQueuedStates(),
+                        (array) self::getProgressState()
                     ),
                 )
             );
@@ -534,7 +536,7 @@ class Group extends FOGController
                     while ($randomnumber == $MulticastSession->get('port')) {
                         $randomnumber = mt_rand(24576, 32766) * 2;
                     }
-                    $this->setSetting('FOG_UDPCAST_STARTINGPORT', $randomnumber);
+                    self::setSetting('FOG_UDPCAST_STARTINGPORT', $randomnumber);
                 }
                 $hostIDs = $this->get('hosts');
                 $batchFields = array(
@@ -557,7 +559,7 @@ class Group extends FOGController
                         $username,
                         $hostIDs[$i],
                         0,
-                        $this->getQueuedState(),
+                        self::getQueuedState(),
                         $TaskType->get('id'),
                         $wol,
                         $Image->get('id'),
@@ -639,7 +641,7 @@ class Group extends FOGController
                         $username,
                         $hostIDs[$i],
                         0,
-                        $this->getQueuedState(),
+                        self::getQueuedState(),
                         $TaskType->get('id'),
                         $wol,
                         $imageIDs[$i],
@@ -683,7 +685,7 @@ class Group extends FOGController
                     $taskName,
                     $username,
                     $hostIDs[$i],
-                    $this->getQueuedState(),
+                    self::getQueuedState(),
                     $TaskType->get('id'),
                     $wol,
                 );
@@ -709,7 +711,7 @@ class Group extends FOGController
                     $taskName,
                     $username,
                     $hostIDs[$i],
-                    $this->getQueuedState(),
+                    self::getQueuedState(),
                     $TaskType->get('id'),
                     $wol,
                 );
@@ -743,7 +745,7 @@ class Group extends FOGController
             ),
             'mac'
         );
-        $hostMACs = $this->parseMacList($hostMACs);
+        $hostMACs = self::parseMacList($hostMACs);
         if (count($hostMACs) > 0) {
             $macStr = implode(
                 '|',
@@ -795,7 +797,7 @@ class Group extends FOGController
             }
             $snapinJobs[] = array(
                 $hostID,
-                $this->getQueuedState(),
+                self::getQueuedState(),
                 $now->format('Y-m-d H:i:s'),
             );
         }
@@ -820,7 +822,7 @@ class Group extends FOGController
                 for ($j = 0; $j < $snapinCount; ++$j) {
                     $snapinTasks[] = array(
                         $jobID,
-                        $this->getQueuedState(),
+                        self::getQueuedState(),
                         $snapins[$hostID][$j],
                     );
                 }

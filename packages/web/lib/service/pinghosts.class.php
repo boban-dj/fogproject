@@ -170,6 +170,11 @@ class PingHosts extends FOGService
                 ''
             );
             foreach ((array)$hostids as $index => &$hostid) {
+                if (false === array_key_exists($index, $hostips)
+                    || false === array_key_exists($index, $hostnames)
+                ) {
+                    continue;
+                }
                 $ip = $hostips[$index];
                 if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
                     $ip = self::$FOGCore->resolveHostname($hostnames[$index]);
@@ -200,14 +205,7 @@ class PingHosts extends FOGService
      */
     public function serviceRun()
     {
-        self::out(
-            ' ',
-            static::$dev
-        );
-        $str = str_pad('+', 75, '-');
-        self::out($str, static::$dev);
         $this->_commonOutput();
-        self::out($str, static::$dev);
         parent::serviceRun();
     }
 }

@@ -71,13 +71,13 @@ class Registration extends FOGBase
             return;
         }
         try {
-            $this->MACs = $this->getHostItem(
+            $this->MACs = self::getHostItem(
                 false,
                 true,
                 true,
                 true
             );
-            $this->Host = $this->getHostItem(
+            $this->Host = self::getHostItem(
                 false,
                 true,
                 true
@@ -98,7 +98,7 @@ class Registration extends FOGBase
             $this->description = sprintf(
                 '%s %s',
                 _('Created by FOG Reg on'),
-                $this->formatTime('now', 'F j, Y, g:i a')
+                self::formatTime('now', 'F j, Y, g:i a')
             );
             if (isset($_REQUEST['advanced'])) {
                 $this->_fullReg();
@@ -390,7 +390,7 @@ class Registration extends FOGBase
             if (!self::getClass('Host')->isHostnameSafe($hostname)) {
                 $hostname = $this->macsimple;
             }
-            $this->setSetting('FOG_QUICKREG_SYS_NUMBER', ++$autoRegSysNumber);
+            self::setSetting('FOG_QUICKREG_SYS_NUMBER', ++$autoRegSysNumber);
             $this->Host = self::getClass('Host')
                 ->set('name', $hostname)
                 ->set('description', $this->description)
@@ -410,6 +410,7 @@ class Registration extends FOGBase
             if ($imageid
                 && $this->Host->getImageMemberFromHostID()
             ) {
+                $this->Host->load();
                 $imageTest = $this
                     ->Host
                     ->createImagePackage(

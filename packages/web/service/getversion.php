@@ -28,8 +28,7 @@
  * @link     https://fogproject.org
  */
 require '../commons/base.inc.php';
-$clientUpdate = (bool)$FOGCore
-    ->getSetting('FOG_CLIENT_AUTOUPDATE');
+$clientUpdate = (bool)FOGCore::getSetting('FOG_CLIENT_AUTOUPDATE');
 if (isset($_REQUEST['client'])) {
     $ver = (
         $clientUpdate ?
@@ -44,12 +43,6 @@ if (isset($_REQUEST['client'])) {
     );
 } elseif (isset($_REQUEST['url'])) {
     $url = $_REQUEST['url'];
-    $test = $FOGURLRequests->isAvailable($url);
-    $test = array_shift($test);
-    if (false === $test) {
-        echo _('Connection appears to be unavailable');
-        exit;
-    }
     $res = $FOGURLRequests
         ->process($_REQUEST['url']);
     $ver = array_shift($res);

@@ -22,6 +22,12 @@
 class DirectoryCleanup extends FOGClient implements FOGClientSend
 {
     /**
+     * Module associated shortname
+     *
+     * @var string
+     */
+    public $shortName = 'dircleanup';
+    /**
      * Stores the data to send
      *
      * @var string
@@ -34,11 +40,9 @@ class DirectoryCleanup extends FOGClient implements FOGClientSend
      */
     public function send()
     {
-        $DirectoryCleanups = self::getClass('DirCleanerManager')->find();
-        foreach ($DirectoryCleanups as $i => &$DirectoryCleanup) {
-            if (!$DirectoryCleanup->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('DirCleanerManager')
+            ->find() as $i => &$DirectoryCleanup
+        ) {
             $SendEnc = base64_encode($DirectoryCleanup->get('path'));
             $SendEnc .= "\n";
             $Send[$i] = $SendEnc;

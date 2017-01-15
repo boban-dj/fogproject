@@ -14,10 +14,11 @@ $(function() {
         URL = $(this).attr('urlcall');
         test = document.createElement('a');
         test.href = URL;
-        test2 = test.pathname+test.search;
+        test2 = '../'+test.pathname+test.search;
         $.ajax({
             context: this,
-            url: test.pathname+test.search,
+            url: test2,
+            type: 'POST',
             data: {
                 url: URL
             },
@@ -42,5 +43,16 @@ $(function() {
     });
     $('#kernelsel').change(function(e) {
         this.form.submit();
+    });
+    $('#bannerimg').click(function(e) {
+        e.preventDefault();
+        $('input[name="banner"]').val('');
+        name = $(this).attr('identi');
+        $('#uploader').html('<input type="file" name="'+name+'" class="newbanner"/>').find('input').click();
+    });
+    $(document).on('change', '.newbanner', function(e) {
+        filename = this.value;
+        filename = filename.replace(/\\/g, '/').replace(/.*\//, "");
+        $('input[name="banner"]').val(filename);
     });
 });

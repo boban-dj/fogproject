@@ -91,8 +91,7 @@ class SnapinHash extends FOGService
     private function _commonOutput()
     {
         try {
-            $StorageNodes = $this->checkIfNodeMaster();
-            foreach ((array)$StorageNodes as &$StorageNode) {
+            foreach ((array)$this->checkIfNodeMaster() as &$StorageNode) {
                 $myStorageGroupID = $StorageNode->get('storagegroupID');
                 $myStorageNodeID = $StorageNode->get('id');
                 $StorageGroup = $StorageNode->getStorageGroup();
@@ -164,13 +163,14 @@ class SnapinHash extends FOGService
                         _('to update hash values as needed')
                     )
                 );
-                $Snapins = self::getClass('SnapinManager')->find(
-                    array(
-                        'id' => $snapinIDs,
-                        'isEnabled' => 1
-                    )
-                );
-                foreach ((array)$Snapins as &$Snapin) {
+                foreach ((array)self::getClass('SnapinManager')
+                    ->find(
+                        array(
+                            'id' => $snapinIDs,
+                            'isEnabled' => 1
+                        )
+                    ) as &$Snapin
+                ) {
                     if (strlen($Snapin->get('hash')) > 10) {
                         self::outall(
                             sprintf(
@@ -239,14 +239,7 @@ class SnapinHash extends FOGService
      */
     public function serviceRun()
     {
-        self::out(
-            ' ',
-            static::$dev
-        );
-        $str = str_pad('+', 75, '-');
-        self::out($str, static::$dev);
         $this->_commonOutput();
-        self::out($str, static::$dev);
         parent::serviceRun();
     }
 }

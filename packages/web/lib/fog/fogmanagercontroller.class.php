@@ -72,12 +72,6 @@ abstract class FOGManagerController extends FOGBase
      */
     protected $loadQueryTemplate = 'SELECT %s FROM `%s` %s %s %s %s %s';
     /**
-     * The load groupby template.
-     *
-     * @var string
-     */
-    protected $loadQueryGroupTemplate = 'SELECT %s FROM (%s) `%s` %s %s %s %s %s';
-    /**
      * The count template.
      *
      * @var string
@@ -274,11 +268,12 @@ abstract class FOGManagerController extends FOGBase
         }
         if (!is_array($orderBy)) {
             $orderBy = sprintf(
-                'ORDER BY %s`%s`.`%s`%s',
+                'ORDER BY %s`%s`.`%s`%s %s',
                 ($orderBy == 'name' ? 'LOWER(' : ''),
                 $this->databaseTable,
                 $this->databaseFields[$orderBy],
-                ($orderBy == 'name' ? ')' : '')
+                ($orderBy == 'name' ? ')' : ''),
+                $sort
             );
             if ($groupBy) {
                 $groupBy = sprintf(
@@ -290,7 +285,21 @@ abstract class FOGManagerController extends FOGBase
                 $groupBy = '';
             }
         } else {
-            $orderBy = '';
+            $orderString = '';
+            foreach ((array)$orderBy as $i => &$order) {
+                $orderString .= sprintf(
+                    '`%s`.`%s` %s,',
+                    $this->databaseTable,
+                    $this->databaseFields[$order],
+                    is_array($sort) ? $sort[$i] : $sort
+                );
+                unset($order);
+            }
+            $orderString = trim($orderString, ','.$sort);
+            $orderBy = sprintf(
+                'ORDER BY %s ',
+                $orderString
+            );
         }
         $join = $whereArrayAnd = array();
         $c = null;
@@ -376,58 +385,9 @@ abstract class FOGManagerController extends FOGBase
                 ) :
                 ''
             ),
-            $orderBy,
-            $sort
+            $groupBy,
+            $orderBy
         );
-        if ($groupBy) {
-            $query = sprintf(
-                $this->loadQueryGroupTemplate,
-                (
-                    $idField ? sprintf('`%s`', implode('`,`', $idField)) : '*'
-                ),
-                $query,
-                $this->databaseTable,
-                $join,
-                (
-                    count($whereArray) > 0 ?
-                    sprintf(
-                        ' WHERE %s%s',
-                        implode(" $whereOperator ", (array) $whereArray),
-                        (
-                            $isEnabled ?
-                            sprintf(' AND %s', $isEnabled)
-                            : ''
-                        )
-                    ) :
-                    (
-                        $isEnabled ?
-                        sprintf(
-                            ' WHERE %s',
-                            $isEnabled
-                        ) :
-                        ''
-                    )
-                ),
-                (
-                    count($whereArrayAnd) > 0 ?
-                    (
-                        count($whereArray) > 0 ?
-                        sprintf(
-                            'AND %s',
-                            implode(" $whereOperator ", (array) $whereArrayAnd)
-                        ) :
-                        sprintf(
-                            ' WHERE %s',
-                            implode(" $whereOperator ", (array) $whereArrayAnd)
-                        )
-                    ) :
-                    ''
-                ),
-                $groupBy,
-                $orderBy,
-                $sort
-            );
-        }
         $data = array();
         self::$DB->query($query, array(), $findVals);
         if ($idField) {
@@ -493,7 +453,7 @@ abstract class FOGManagerController extends FOGBase
         if (count($findWhere)) {
             foreach ((array) $findWhere as $field => &$value) {
                 $field = trim($field);
-                if (is_array($value)) {
+                if (is_array($value) && count($value) > 0) {
                     foreach ((array) $value as $index => &$val) {
                         $key = sprintf(
                             '%s_%d',
@@ -513,6 +473,9 @@ abstract class FOGManagerController extends FOGBase
                     }
                     unset($countKeys);
                 } else {
+                    if (is_array($value)) {
+                        $value = '';
+                    }
                     $countVals[$field] = $value;
                     $whereArray[] = sprintf(
                         '`%s` %s :%s',
@@ -781,7 +744,7 @@ abstract class FOGManagerController extends FOGBase
                 ''
             )
         );
-        $queryVals = array_merge(
+        $queryVals = self::fastmerge(
             (array) $updateVals,
             (array) $findVals
         );
@@ -836,7 +799,7 @@ abstract class FOGManagerController extends FOGBase
         );
         $destroyVals = array();
         $ids = array_chunk($ids, 500);
-        foreach ((array) $ids as &$id) {
+        foreach ((array)$ids as &$id) {
             foreach ((array) $id as $index => &$id_1) {
                 $keyStr = sprintf('id_%d', $index);
                 $destroyKeys[] = sprintf(':%s', $keyStr);
@@ -891,17 +854,18 @@ abstract class FOGManagerController extends FOGBase
             $elementName = strtolower($this->childClass);
         }
         $this->orderBy($orderBy);
-        $items = $this->find(
-            $filter ? array('id' => $filter) : '',
-            '',
-            $orderBy,
-            '',
-            '',
-            '',
-            ($filter ? true : false)
-        );
         ob_start();
-        foreach ((array) $items as &$Object) {
+        foreach ((array)$this
+            ->find(
+                $filter ? array('id' => $filter) : '',
+                '',
+                $orderBy,
+                '',
+                '',
+                '',
+                ($filter ? true : false)
+            ) as &$Object
+        ) {
             if (!$Object->isValid()) {
                 continue;
             }
@@ -1088,7 +1052,7 @@ abstract class FOGManagerController extends FOGBase
                 '',
                 'OR'
             );
-            $HostIDs = array_merge(
+            $HostIDs = self::fastmerge(
                 $HostIDs,
                 $macHostIDs,
                 $invHostIDs
@@ -1123,7 +1087,7 @@ abstract class FOGManagerController extends FOGBase
                 'OR'
             );
             if (count($ImageIDs) > 0) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'Host',
@@ -1132,7 +1096,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($GroupIDs) > 0) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'GroupAssociation',
@@ -1142,7 +1106,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($SnapinIDs) > 0) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'SnapinAssociation',
@@ -1152,7 +1116,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($PrinterIDs) > 0) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'PrinterAssociation',
@@ -1161,7 +1125,7 @@ abstract class FOGManagerController extends FOGBase
                     )
                 );
             }
-            $itemIDs = array_merge($itemIDs, $HostIDs);
+            $itemIDs = self::fastmerge($itemIDs, $HostIDs);
             $itemIDs = array_filter($itemIDs);
             $itemIDs = array_unique($itemIDs);
             break;
@@ -1172,7 +1136,7 @@ abstract class FOGManagerController extends FOGBase
                     array('id' => $HostIDs),
                     'imageID'
                 );
-                $itemIDs = array_merge($itemIDs, $ImageIDs);
+                $itemIDs = self::fastmerge($itemIDs, $ImageIDs);
             }
             $itemIDs = array_filter($itemIDs);
             $itemIDs = array_unique($itemIDs);
@@ -1214,7 +1178,7 @@ abstract class FOGManagerController extends FOGBase
                 'OR'
             );
             if (count($ImageIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'Host',
@@ -1223,7 +1187,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($GroupIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'GroupAssociation',
@@ -1233,7 +1197,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($SnapinIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'SnapinAssociation',
@@ -1243,7 +1207,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($PrinterIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'PrinterAssociation',
@@ -1253,7 +1217,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($TaskStateIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'Task',
@@ -1262,7 +1226,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($TaskTypeIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'Task',
@@ -1271,7 +1235,7 @@ abstract class FOGManagerController extends FOGBase
                 );
             }
             if (count($HostIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         'Task',
@@ -1295,7 +1259,7 @@ abstract class FOGManagerController extends FOGBase
             if (count($itemIDs) && !count($HostIDs)) {
                 break;
             }
-            $HostIDs = array_merge(
+            $HostIDs = self::fastmerge(
                 $HostIDs,
                 self::getSubObjectIDs(
                     $assoc,
@@ -1304,7 +1268,7 @@ abstract class FOGManagerController extends FOGBase
                 )
             );
             if (count($HostIDs)) {
-                $itemIDs = array_merge(
+                $itemIDs = self::fastmerge(
                     $itemIDs,
                     self::getSubObjectIDs(
                         $assoc,
@@ -1367,7 +1331,7 @@ abstract class FOGManagerController extends FOGBase
                     &$countKeys
                 ) {
                     $field = trim($field);
-                    if (is_array($value)) {
+                    if (is_array($value) && count($value) > 0) {
                         foreach ((array) $value as $index => &$val) {
                             $countKeys[] = sprintf(':countVal%d', $index);
                             $countVals[sprintf('countVal%d', $index)] = $val;
@@ -1380,6 +1344,9 @@ abstract class FOGManagerController extends FOGBase
                             implode(',', $countKeys)
                         );
                     } else {
+                        if (is_array($value)) {
+                            $value = '';
+                        }
                         $countVals['countVal'] = $value;
                         $whereArray[] = sprintf(
                             '`%s`.`%s`%s:countVal',

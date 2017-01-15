@@ -72,8 +72,7 @@ abstract class TaskingElement extends FOGBase
     {
         parent::__construct();
         try {
-            $this->Host = $this
-                ->getHostItem(false);
+            $this->Host = self::getHostItem(false);
             $this->Task = $this
                 ->Host
                 ->get('task');
@@ -109,11 +108,11 @@ abstract class TaskingElement extends FOGBase
                         || $this->Task->isMulticast()
                     ) {
                         $this->StorageNode = $this
-                            ->StorageGroup()
+                            ->StorageGroup
                             ->getMasterStorageNode();
                     } else {
                         $this->StorageNode = $this
-                            ->StorageGroup()
+                            ->StorageGroup
                             ->getOptimalStorageNode();
                     }
                 }
@@ -126,9 +125,13 @@ abstract class TaskingElement extends FOGBase
                 $this->Image = $this
                     ->Task
                     ->getImage();
+                $getter = 'enablednodes';
+                if (count($this->StorageGroup->get($getter)) < 1) {
+                    $getter = 'allnodes';
+                }
                 $this->StorageNodes = self::getClass('StorageNodeManager')
                     ->find(
-                        array('id' => $this->StorageGroup->get('enablednodes'))
+                        array('id' => $this->StorageGroup->get($getter))
                     );
                 if ($this->Task->isCapture()
                     || $this->Task->isMulticast()
@@ -198,7 +201,11 @@ abstract class TaskingElement extends FOGBase
      */
     protected static function checkStorageNodes(&$StorageGroup)
     {
-        if (!$StorageGroup->get('enablednodes')) {
+        $getter = 'enablednodes';
+        if (count($StorageGroup->get($getter)) < 1) {
+            $getter = 'allnodes';
+        }
+        if (count($StorageGroup->get($getter)) < 1) {
             throw new Exception(
                 sprintf(
                     '%s, %s?',
@@ -269,7 +276,7 @@ abstract class TaskingElement extends FOGBase
                 );
             return self::getClass('ImagingLog')
                 ->set('hostID', $this->Host->get('id'))
-                ->set('start', $this->formatTime('', 'Y-m-d H:i:s'))
+                ->set('start', self::formatTime('', 'Y-m-d H:i:s'))
                 ->set('image', $this->Image->get('name'))
                 ->set('type', $_REQUEST['type'])
                 ->set('createdBy', $this->Task->get('createdBy'))
@@ -285,7 +292,7 @@ abstract class TaskingElement extends FOGBase
         );
         $ilID = @max($ilID);
         return self::getClass('ImagingLog', $ilID)
-            ->set('finish', $this->formatTime('', 'Y-m-d H:i:s'))
+            ->set('finish', self::formatTime('', 'Y-m-d H:i:s'))
             ->save();
     }
 }

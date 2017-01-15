@@ -454,7 +454,11 @@ shrinkPartition() {
         ntfs)
             ntfsresize -f -i -v -P $part >/tmp/tmpoutput.txt 2>&1
             if [[ ! $? -eq 0 ]]; then
-                handleError " * (${FUNCNAME[0]})\n    Args Passed: $*\n\nFatal Error, unable to find size data out on $part. Cmd: ntfsresize -f -i -v -P $part"
+                echo " * Not shrinking ($part) trying fixed size"
+                debugPause
+                echo "$(cat "$imagePath/d1.fixed_size_partitions"):${part_number}" > "$imagePath/d1.fixed_size_partitions"
+                return
+                #handleError " * (${FUNCNAME[0]})\n    Args Passed: $*\n\nFatal Error, unable to find size data out on $part. Cmd: ntfsresize -f -i -v -P $part"
             fi
             tmpoutput=$(cat /tmp/tmpoutput.txt)
             size=$(cat /tmp/tmpoutput.txt | grep "You might resize" | cut -d" " -f5)
@@ -673,7 +677,8 @@ writeImage()  {
         echo " * Imaging using Partclone"
         pigz -d -c </tmp/pigz1 | partclone.restore --ignore_crc -O $target -N -f 1
     fi
-    [[ ! $? -eq 0 ]] && handleError "Image failed to restore and exited with exit code $? (${FUNCNAME[0]})\n   Args Passed: $*"
+    exitcode=$?
+    [[ ! $exitcode -eq 0 ]] && handleError "Image failed to restore and exited with exit code $exitcode (${FUNCNAME[0]})\n   Args Passed: $*"
     rm -rf /tmp/pigz1 >/dev/null 2>&1
 }
 # Gets the valid restore parts. They're only
@@ -1893,7 +1898,12 @@ restorePartitionTablesAndBootLoaders() {
         dots "Restoring Partition Tables (GPT)"
         restoreGRUB "$disk" "$disk_number" "$imagePath" "true"
         sgdisk -gel $tmpMBR $disk >/dev/null 2>&1
-        [[ ! $? -eq 0 ]] && handleError "Error trying to restore GPT partition tables (${FUNCNAME[0]})\n   Args Passed: $*"
+        sgdiskexit="$?"
+        if [[ ! $sgdiskexit -eq 0 ]]; then
+            echo "Failed"
+            debugPause
+            handleError "Error trying to restore GPT partition tables (${FUNCNAME[0]})\n   Args Passed: $*\n    CMD Tried: sgdisk -gel $tmpMBR $disk\n    Exit returned code: $sgdiskexit"
+        fi
         global_gptcheck="yes"
         echo "Done"
     else
@@ -1992,13 +2002,14 @@ savePartition() {
                     imgpart="$imagePath/d${disk_number}p${part_number}.img"
                     uploadFormat "$fifoname" "$imgpart"
                     partclone.$fstype -fsck-src-part -c -s $part -O $fifoname -N -f 1
-                    case $? in
+                    exitcode=$?
+                    case $exitcode in
                         0)
                             mv ${imgpart}.000 $imgpart >/dev/null 2>&1
                             echo " * Image Captured"
                             ;;
                         *)
-                            handleError "Failed to complete capture (${FUNCNAME[0]})\n   Args Passed: $*"
+                            handleError "Failed to complete capture (${FUNCNAME[0]})\n   Args Passed: $*\n    Exit code: $exitcode\n    Maybe check the fog server\n      to ensure disk space is good to go?"
                             ;;
                     esac
                     ;;
@@ -2188,7 +2199,7 @@ performRestore() {
         echo " * Resetting UUIDs for $disk"
         debugPause
         restoreUUIDInformation "$disk" "$mainuuidfilename"
-        echo " * Resettings swap systems"
+        echo " * Resetting swap systems"
         debugPause
         makeAllSwapSystems "$disk" "$disk_number" "$imagePath" "$imgPartitionType"
         let disk_number+=1

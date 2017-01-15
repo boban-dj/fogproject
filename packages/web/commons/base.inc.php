@@ -28,7 +28,7 @@ header('X-Content-Type-Options: nosniff');
 header('Strict-Transport-Security: max-age=31536000');
 header(
     "Content-Security-Policy: default-src 'none';"
-    . "script-src 'self';"
+    . "script-src 'self' 'unsafe-eval';"
     . "connect-src 'self';"
     . "img-src 'self' data:;"
     . "style-src 'self' 'unsafe-inline';"
@@ -44,3 +44,6 @@ require 'init.php';
  * All output should be sanitized for faster browser experience.
  */
 ob_start(array('Initiator', 'sanitizeOutput'));
+Initiator::sanitizeItems();
+Initiator::startInit();
+new LoadGlobals();

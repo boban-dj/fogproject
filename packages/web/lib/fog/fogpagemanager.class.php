@@ -253,7 +253,7 @@ class FOGPageManager extends FOGBase
                 $class->attributes
             );
         }
-        $class->$method();
+        $class->{$method}();
         $this->resetRequest();
     }
     /**
@@ -360,7 +360,7 @@ class FOGPageManager extends FOGBase
         $files = array_values(
             array_filter(
                 array_unique(
-                    array_merge(
+                    self::fastmerge(
                         $normalfiles,
                         $pluginfiles
                     )

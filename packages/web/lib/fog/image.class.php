@@ -189,7 +189,7 @@ class Image extends FOGController
             $primary = array_shift($primary);
             $this->setPrimaryGroup($primary);
         }
-        return $this;
+        return $this->load();
     }
     /**
      * Deletes the image file
@@ -201,17 +201,14 @@ class Image extends FOGController
         if ($this->get('protected')) {
             throw new Exception(self::$foglang['ProtectedImage']);
         }
-        $StorageNodes = self::getClass('StorageNodeManager')
+        foreach ((array)self::getClass('StorageNodeManager')
             ->find(
                 array(
                     'storagegroupID' => $this->get('storagegroups'),
                     'isEnabled' => 1
                 )
-            );
-        foreach ((array)$StorageNodes as &$StorageNode) {
-            if (!$StorageNode->isValid()) {
-                continue;
-            }
+            ) as &$StorageNode
+        ) {
             $ftppath = $StorageNode->get('ftppath');
             $ftppath = trim($ftppath, '/');
             $deleteFile = sprintf(
@@ -479,6 +476,20 @@ class Image extends FOGController
      */
     public function setPrimaryGroup($groupID)
     {
+        $exists = self::getSubObjectIDs(
+            'ImageAssociation',
+            array(
+                'imageID' => $this->get('id'),
+                'storagegroupID' => $groupID
+            ),
+            'storagegroupID'
+        );
+        if (count($exists) < 1) {
+            self::getClass('ImageAssociation')
+                ->set('imageID', $this->get('id'))
+                ->set('storagegroupID', $groupID)
+                ->save();
+        }
         /**
          * Unset all current groups to non-primary
          */

@@ -409,7 +409,7 @@ abstract class FOGBase
      *
      * @return array|object Returns either th macs or the host
      */
-    public function getHostItem(
+    public static function getHostItem(
         $service = true,
         $encoded = false,
         $hostnotrequired = false,
@@ -428,7 +428,7 @@ abstract class FOGBase
         $mac = trim($mac);
 
         // Parsing the macs
-        $MACs = $this->parseMacList($mac, !$service, $service);
+        $MACs = self::parseMacList($mac, !$service, $service);
 
         foreach ((array) $MACs as &$mac) {
             if (!$mac->isValid()) {
@@ -505,14 +505,14 @@ abstract class FOGBase
 
             return $NodeFailure->get('id');
         };
-        $FailedNodes = self::getClass('NodeFailureManager')
-            ->find(
-                array(
-                    'taskID' => $this->Host->get('task')->get('id'),
-                    'hostID' => $this->Host->get('id'),
-                )
-            );
-        $nodeRet = array_map($nodeFail, (array) $FailedNodes);
+        $find = array(
+            'taskID' => $this->Host->get('task')->get('id'),
+            'hostID' => $this->Host->get('id'),
+        );
+        $nodeRet = array_map(
+            $nodeFail,
+            (array)self::getClass('NodeFailureManager')->find($find)
+        );
         $nodeRet = array_filter($nodeRet);
         $nodeRet = array_unique($nodeRet);
         $nodeRet = array_values($nodeRet);
@@ -793,8 +793,11 @@ abstract class FOGBase
      *
      * @return key or false
      */
-    protected function arrayFind($needle, array $haystack, $ignorecase = false)
-    {
+    protected function arrayFind(
+        $needle,
+        array $haystack,
+        $ignorecase = false
+    ) {
         $cmd = $ignorecase !== false ? 'stripos' : 'strpos';
         foreach ($haystack as $key => &$value) {
             if (false !== $cmd($value, $needle)) {
@@ -958,13 +961,13 @@ abstract class FOGBase
      *
      * @return mixed
      */
-    public function formatTime($time, $format = false, $utc = false)
+    public static function formatTime($time, $format = false, $utc = false)
     {
         if (!$time instanceof DateTime) {
             $time = self::niceDate($time, $utc);
         }
         if ($format) {
-            if (!$this->validDate($time)) {
+            if (!self::validDate($time)) {
                 return _('No Data');
             }
 
@@ -977,7 +980,7 @@ abstract class FOGBase
         if (is_nan($diff)) {
             return _('Not a number');
         }
-        if (!$this->validDate($time)) {
+        if (!self::validDate($time)) {
             return _('No Data');
         }
         $date = $time->format('Y/m/d');
@@ -987,9 +990,9 @@ abstract class FOGBase
             } elseif ($diff < 0 && $absolute < 60) {
                 return 'Seconds from now';
             } elseif ($absolute < 3600) {
-                return $this->humanify($diff / 60, 'minute');
+                return self::humanify($diff / 60, 'minute');
             } else {
-                return $this->humanify($diff / 3600, 'hour');
+                return self::humanify($diff / 3600, 'hour');
             }
         }
         $dayAgo = clone $now;
@@ -1001,14 +1004,14 @@ abstract class FOGBase
         } elseif ($dayAhead->format('Y/m/d') == $date) {
             return 'Runs today at '.$time->format('H:i');
         } elseif ($absolute / 86400 <= 7) {
-            return $this->humanify($diff / 86400, 'day');
+            return self::humanify($diff / 86400, 'day');
         } elseif ($absolute / 604800 <= 5) {
-            return $this->humanify($diff / 604800, 'week');
+            return self::humanify($diff / 604800, 'week');
         } elseif ($absolute / 2628000 < 12) {
-            return $this->humanify($diff / 2628000, 'month');
+            return self::humanify($diff / 2628000, 'month');
         }
 
-        return $this->humanify($diff / 31536000, 'year');
+        return self::humanify($diff / 31536000, 'year');
     }
     /**
      * Checks if the time passed is valid or not.
@@ -1018,7 +1021,7 @@ abstract class FOGBase
      *
      * @return object
      */
-    protected function validDate($date, $format = '')
+    protected static function validDate($date, $format = '')
     {
         if ($format == 'N') {
             if ($date instanceof DateTime) {
@@ -1170,7 +1173,7 @@ abstract class FOGBase
      *
      * @return string
      */
-    protected function humanify($diff, $unit)
+    protected static function humanify($diff, $unit)
     {
         if (!is_numeric($diff)) {
             throw new Exception(_('Diff parameter must be numeric'));
@@ -1274,7 +1277,10 @@ abstract class FOGBase
         $array[$old_key] = trim($array[$old_key]);
         if (!self::$service && is_string($array[$old_key])) {
             $array[$new_key] = htmlentities(
-                $array[$old_key],
+                mb_convert_encoding(
+                    $array[$old_key],
+                    'utf-8'
+                ),
                 ENT_QUOTES,
                 'utf-8'
             );
@@ -1545,7 +1551,7 @@ abstract class FOGBase
      *
      * @return array
      */
-    public function parseMacList(
+    public static function parseMacList(
         $stringlist,
         $image = false,
         $client = false
@@ -1605,7 +1611,7 @@ abstract class FOGBase
             $existingMACs = array_filter($existingMACs);
             $existingMACs = array_unique($existingMACs);
             $existingMACs = array_values($existingMACs);
-            $MACs = array_merge((array) $MACs, (array) $existingMACs);
+            $MACs = self::fastmerge((array) $MACs, (array) $existingMACs);
             $MACs = array_unique($MACs);
         }
         if ($client) {
@@ -1716,7 +1722,7 @@ abstract class FOGBase
      *
      * @return bool
      */
-    protected function arrayStrpos($haystack, $needles, $case = true)
+    protected static function arrayStrpos($haystack, $needles, $case = true)
     {
         $cmd = sprintf('str%spos', ($case ? 'i' : ''));
         $mapinfo = array();
@@ -1772,9 +1778,6 @@ abstract class FOGBase
     {
         if (!is_string($string)) {
             throw new Exception(_('String must be a string'));
-        }
-        if (!(self::$FOGUser instanceof User && self::$FOGUser->isValid())) {
-            return;
         }
         $string = sprintf(
             '[%s] %s',
@@ -1855,7 +1858,26 @@ abstract class FOGBase
         if (empty($operator)) {
             $operator = 'AND';
         }
-
+        if (is_array($getField)) {
+            foreach ((array)$getField as &$field) {
+                $data[$field] = self::getClass($object)
+                    ->getManager()
+                    ->find(
+                        $findWhere,
+                        $operator,
+                        $orderBy,
+                        '',
+                        '',
+                        $groupBy,
+                        $not,
+                        $field,
+                        '',
+                        $filter
+                    );
+                unset($field);
+            }
+            return $data;
+        }
         return self::getClass($object)->getManager()->find(
             $findWhere,
             $operator,
@@ -1890,7 +1912,13 @@ abstract class FOGBase
             ->load('name')
             ->get('value');
 
-        return trim(str_replace($findStr, $repStr, $value));
+        return trim(
+            str_replace(
+                $findStr,
+                $repStr,
+                $value
+            )
+        );
     }
     /**
      * Set global setting value by key.
@@ -1902,69 +1930,67 @@ abstract class FOGBase
      *
      * @return this
      */
-    public function setSetting($key, $value)
+    public static function setSetting($key, $value)
     {
         self::getClass('ServiceManager')->update(
             array('name' => $key),
             '',
             array('value' => trim($value))
         );
-
-        return $this;
     }
     /**
      * Gets queued state ids.
      *
      * @return array
      */
-    public function getQueuedStates()
+    public static function getQueuedStates()
     {
-        return (array) self::getClass('TaskState')->getQueuedStates();
+        return (array)TaskState::getQueuedStates();
     }
     /**
      * Get queued state main id.
      *
      * @return int
      */
-    public function getQueuedState()
+    public static function getQueuedState()
     {
-        return self::getClass('TaskState')->getQueuedState();
+        return TaskState::getQueuedState();
     }
     /**
      * Get checked in state id.
      *
      * @return int
      */
-    public function getCheckedInState()
+    public static function getCheckedInState()
     {
-        return self::getClass('TaskState')->getCheckedInState();
+        return TaskState::getCheckedInState();
     }
     /**
      * Get in progress state id.
      *
      * @return int
      */
-    public function getProgressState()
+    public static function getProgressState()
     {
-        return self::getClass('TaskState')->getProgressState();
+        return TaskState::getProgressState();
     }
     /**
      * Get complete state id.
      *
      * @return int
      */
-    public function getCompleteState()
+    public static function getCompleteState()
     {
-        return self::getClass('TaskState')->getCompleteState();
+        return TaskState::getCompleteState();
     }
     /**
      * Get cancelled state id.
      *
      * @return int
      */
-    public function getCancelledState()
+    public static function getCancelledState()
     {
-        return self::getClass('TaskState')->getCancelledState();
+        return TaskState::getCancelledState();
     }
     /**
      * Put string between two strings.
@@ -1975,7 +2001,7 @@ abstract class FOGBase
      *
      * @return string
      */
-    public function stringBetween($string, $start, $end)
+    public static function stringBetween($string, $start, $end)
     {
         $string = " $string";
         $ini = strpos($string, $start);
@@ -2097,7 +2123,7 @@ abstract class FOGBase
         };
         $IPs = array_map($retIPs, (array) $IPs);
         $Names = array_map($retNames, (array) $IPs);
-        $output = array_merge($IPs, $Names);
+        $output = self::fastmerge($IPs, $Names);
         unset($IPs, $Names);
         natcasesort($output);
         self::$ips = array_values(array_filter(array_unique((array) $output)));
@@ -2153,7 +2179,7 @@ abstract class FOGBase
         session_write_close();
         ignore_user_abort(true);
         set_time_limit(0);
-        $macs = $this->parseMacList($macs);
+        $macs = self::parseMacList($macs);
         if (count($macs) < 1) {
             return;
         }
@@ -2165,58 +2191,32 @@ abstract class FOGBase
         if (empty($macStr)) {
             return;
         }
-        $url = 'http://%s%smanagement/index.php?';
+        $url = 'http://%s/fog/management/index.php?';
         $url .= 'node=client&sub=wakeEmUp';
         $nodeURLs = array();
         $macCount = count($macs);
         if ($macCount < 1) {
             return;
         }
-        $Nodes = self::getClass('StorageNodeManager')
+        foreach ((array)self::getClass('StorageNodeManager')
             ->find(
-                array(
-                    'isEnabled' => 1,
-                )
-            );
-        foreach ((array) $Nodes as &$Node) {
-            if (!$Node->isValid()) {
-                continue;
-            }
-            $curroot = trim($Node->get('webroot'), '/');
-            $curroot = trim($curroot);
-            $webroot = sprintf(
-                '/%s',
-                (
-                    strlen($curroot) > 1 ?
-                    sprintf(
-                        '%s/',
-                        $curroot
-                    ) :
-                    ''
-                )
-            );
+                array('isEnabled' => 1)
+            ) as &$Node
+        ) {
             $ip = $Node->get('ip');
-            $testurls[] = sprintf(
-                'http://%s%smanagement/index.php',
-                $ip,
-                $webroot
-            );
             $nodeURLs[] = sprintf(
                 $url,
-                $ip,
-                $webroot
+                $ip
             );
             unset($Node);
         }
         list(
-            $gHost,
-            $gRoot
+            $gHost
         ) = self::getSubObjectIDs(
             'Service',
             array(
                 'name' => array(
-                    'FOG_WEB_HOST',
-                    'FOG_WEB_ROOT',
+                    'FOG_WEB_HOST'
                 ),
             ),
             'value',
@@ -2226,31 +2226,7 @@ abstract class FOGBase
             false,
             ''
         );
-        $curroot = $gRoot;
-        $curroot = trim($curroot, '/');
-        $curroot = trim($curroot);
-        $webroot = sprintf(
-            '/%s',
-            (
-                strlen($curroot) > 1 ?
-                sprintf(
-                    '%s/',
-                    $curroot
-                ) :
-                ''
-            )
-        );
         $ip = $gHost;
-        $testurls[] = sprintf(
-            'http://%s%smanagement/index.php',
-            $ip,
-            $webroot
-        );
-        $test = array_filter(self::$FOGURLRequests->isAvailable($testurls));
-        $nodeURLs = array_intersect_key($nodeURLs, $test);
-        if (count($nodeURLs) < 1) {
-            return;
-        }
         self::$FOGURLRequests->process(
             $nodeURLs,
             'POST',
@@ -2260,5 +2236,33 @@ abstract class FOGBase
             false,
             false
         );
+    }
+    /**
+     * Faster array merge operation.
+     *
+     * @param array $array1 The array to merge with.
+     *
+     * @return array
+     */
+    public static function fastmerge($array1)
+    {
+        $others = func_get_args();
+        array_shift($others);
+        foreach ((array)$others as &$other) {
+            foreach ((array)$other as $key => &$oth) {
+                if (is_numeric($key)) {
+                    $array1[] = $oth;
+                    continue;
+                } elseif (isset($array1[$key])) {
+                    $array1[$key] = $oth;
+                    continue;
+                }
+                unset($oth);
+            }
+            $array1 += $other;
+            unset($other);
+        }
+
+        return $array1;
     }
 }

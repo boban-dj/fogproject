@@ -248,31 +248,8 @@ class FOGCore extends FOGBase
      */
     public static function setSessionEnv()
     {
-        $_SESSION['HostCount'] = self::getClass('HostManager')->count();
-        $incQuery = sprintf(
-            'SET SESSION group_concat_max_len=(1024 * %d)',
-            $_SESSION['HostCount']
-        );
-        self::$DB->query($incQuery);
-        $setEngine = 'SELECT TABLE_NAME from INFORMATION_SCHEMA.TABLES '
-            . "TABLE_SCHEMA = '"
-            . DATABASE_NAME
-            . "' AND ENGINE != 'MyISAM'";
-        $vals = self::$DB
-            ->query($setEngine)
-            ->fetch(MYSQLI_NUM, 'fetch_all')
-            ->get('TABLE_NAME');
-        $alterStr = sprintf(
-            'ALTER TABLE `%s`.`%s` ENGINE=MyISAM',
-            DATABASE_NAME,
-            '%s'
-        );
-        foreach ((array)$vals as &$table) {
-            self::$DB->query(sprintf($alterStr, $table));
-            unset($table);
-        }
+        $_SESSION['PluginsInstalled'] = (array)self::getActivePlugins();
         $getSettings = array(
-            'FOG_DATA_RETURNED',
             'FOG_FORMAT_FLAG_IN_GUI',
             'FOG_FTP_IMAGE_SIZE',
             'FOG_HOST_LOOKUP',
@@ -283,7 +260,6 @@ class FOGCore extends FOGBase
             'FOG_VIEW_DEFAULT_SCREEN'
         );
         list(
-            $dataReturn,
             $formatFlag,
             $ftpImage,
             $hostLookup,
@@ -310,6 +286,7 @@ class FOGCore extends FOGBase
         $_SESSION['FOG_SNAPINDIR'] = $snapinDir;
         $_SESSION['FOG_REPORT_DIR'] = $reportDir;
         $defTz = ini_get('date.timezone');
+        $_SESSION['FOG_FORMAT_FLAG_IN_GUI'] = $formatFlag;
         if (empty($defTz)) {
             if (empty($tzInfo)) {
                 $_SESSION['TimeZone'] = 'UTC';
@@ -320,7 +297,6 @@ class FOGCore extends FOGBase
             $_SESSION['TimeZone'] = $defTz;
         }
         ini_set('max_input_vars', 10000);
-        $_SESSION['PluginsInstalled'] = (array)self::getActivePlugins();
         $_SESSION['Pending-Hosts'] = self::getClass('HostManager')
             ->count(array('pending' => 1));
         if (self::$DB->getColumns('hostMAC', 'hmMAC') > 0) {
@@ -328,18 +304,13 @@ class FOGCore extends FOGBase
                 'MACAddressAssociationManager'
             )->count(array('pending' => 1));
         }
-        $_SESSION['UserCount'] = self::getClass('UserManager')->count();
-        $_SESSION['GroupCount'] = self::getClass('GroupManager')->count();
-        $_SESSION['ImageCount'] = self::getClass('ImageManager')->count();
-        $_SESSION['SnapinCount'] = self::getClass('SnapinManager')->count();
-        $_SESSION['PrinterCount'] = self::getClass('PrinterManager')->count();
         $memorySet = preg_replace('#M#', '', ini_get('memory_limit'));
         if ($memorySet < $_SESSION['memory']) {
             if (is_numeric($_SESSION['memory'])) {
                 ini_set('memory_limit', sprintf('%dM', $_SESSION['memory']));
             }
         }
-        $_SESSION['FOG_FORMAT_FLAG_IN_GUI'] = $formatFlag;
+        $_SESSION['SESS_DONE'] = true;
         return self::getClass(__CLASS__);
     }
 }

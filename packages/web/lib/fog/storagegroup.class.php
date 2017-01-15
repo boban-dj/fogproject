@@ -104,7 +104,10 @@ class StorageGroup extends FOGController
             'allnodes',
             self::getSubObjectIDs(
                 'StorageNode',
-                array('storagegroupID' => $this->get('id')),
+                array(
+                    'storagegroupID' => $this->get('id'),
+                    'maxClients' => range(1, 9999)
+                ),
                 'id'
             )
         );
@@ -116,29 +119,17 @@ class StorageGroup extends FOGController
      */
     protected function loadEnablednodes()
     {
-        global $node;
         $find = array(
             'storagegroupID' => $this->get('id'),
             'id' => $this->get('allnodes'),
+            'maxClients' => range(1, 9999),
             'isEnabled' => 1
         );
-        $nodes = $this->getSubObjectIDs(
-            'StorageNode',
-            $find
-        );
-        $this->set('enablednodes', $nodes);
-        return;
         $nodeids = array();
         $testurls = array();
-        foreach ($nodes as &$node) {
-            if (!$node->isValid()) {
-                unset($node);
-                continue;
-            }
-            if ($node->get('maxClients') < 1) {
-                unset($node);
-                continue;
-            }
+        foreach ((array)self::getClass('StorageNodeManager')
+            ->find($find) as &$node
+        ) {
             $testurls[] = sprintf(
                 'http://%s/fog/management/index.php',
                 $node->get('ip')
@@ -180,7 +171,7 @@ class StorageGroup extends FOGController
         return (int)self::$_used['tot'] = self::getClass('TaskManager')
             ->count(
                 array(
-                    'stateID' => $this->getProgressState(),
+                    'stateID' => self::getProgressState(),
                     'storagenodeID' => $this->get('enablednodes'),
                     'typeID' => $this->get('usedtasks'),
                 )
@@ -199,7 +190,7 @@ class StorageGroup extends FOGController
         return (int)self::$_queued['tot'] = self::getClass('TaskManager')
             ->count(
                 array(
-                    'stateID' => $this->getQueuedStates(),
+                    'stateID' => self::getQueuedStates(),
                     'storagenodeID' => $this->get('enablednodes'),
                     'typeID' => $this->get('usedtasks'),
                 )
@@ -237,7 +228,7 @@ class StorageGroup extends FOGController
             'StorageNode',
             array(
                 'id' => $this->get('enablednodes'),
-                'isMaster' => 1
+                'isMaster' => 1,
             )
         );
         $masternode = array_shift($masternode);
@@ -246,6 +237,26 @@ class StorageGroup extends FOGController
             && $masternode > 0)
         ) {
             $masternode = @min($this->get('enablednodes'));
+        }
+        if (!$masternode > 0) {
+            $nodeids = self::getSubObjectIDs(
+                'StorageNode',
+                array(
+                    'id' => $this->get('allnodes'),
+                    'isEnabled' => 1,
+                    'isMaster' => 1
+                )
+            );
+            if (count($nodeids) < 1) {
+                $nodeids = self::getSubObjectIDs(
+                    'StorageNode',
+                    array(
+                        'id' => $this->get('allnodes'),
+                        'isEnabled' => 1
+                    )
+                );
+            }
+            $masternode = @min($nodeids);
         }
         return new StorageNode($masternode);
     }
@@ -256,18 +267,16 @@ class StorageGroup extends FOGController
      */
     public function getOptimalStorageNode()
     {
-        $Nodes = self::getClass('StorageNodeManager')
-            ->find(
-                array('id' => $this->get('enablednodes'))
-            );
+        $getter = 'enablednodes';
+        if (count($this->get('enablednodes')) < 1) {
+            $getter = 'allnodes';
+        }
         $winner = null;
-        foreach ((array)$Nodes as &$Node) {
-            if (!$Node->isValid()) {
-                continue;
-            }
-            if ($Node->get('maxClients') < 1) {
-                continue;
-            }
+        foreach ((array)self::getClass('StorageNodeManager')
+            ->find(
+                array('id' => $this->get($getter))
+            ) as &$Node
+        ) {
             if ($winner == null
                 || $Node->getClientLoad() < $winner->getClientLoad()
             ) {

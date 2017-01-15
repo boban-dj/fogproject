@@ -49,20 +49,16 @@ class MulticastTask extends FOGService
         );
         unset($StorageNode);
         $Tasks = array();
-        $MulticastSessions = self::getClass('MulticastSessionsManager')
-            ->find(
-                array(
-                    'stateID' =>
-                    array_merge(
-                        $this->getQueuedStates(),
-                        (array)$this->getProgressState()
-                    )
-                )
-            );
-        foreach ((array)$MulticastSessions as $index => &$MultiSess) {
-            if (!$MultiSess->isValid()) {
-                continue;
-            }
+        $find = array(
+            'stateID' =>
+            self::fastmerge(
+                self::getQueuedStates(),
+                (array)self::getProgressState()
+            )
+        );
+        foreach ((array)self::getClass('MulticastSessionsManager')
+            ->find($find) as $index => &$MultiSess
+        ) {
             $taskIDs = self::getSubObjectIDs(
                 'MulticastSessionsAssociation',
                 array(
@@ -80,7 +76,7 @@ class MulticastTask extends FOGService
                 $count = $MultiSess->get('sessclients');
             }
             if ($count < 1) {
-                $MultiSess->set('stateID', $this->getCancelledState())->save();
+                $MultiSess->set('stateID', self::getCancelledState())->save();
                 self::outall(
                     _('Task not created as there are no associated Tasks')
                 );
@@ -620,7 +616,7 @@ class MulticastTask extends FOGService
         $this->startTasking($this->getCMD(), $this->getUDPCastLogFile());
         $this->procRef = array_shift($this->procRef);
         $this->_MultiSess
-            ->set('stateID', $this->getQueuedState())
+            ->set('stateID', self::getQueuedState())
             ->save();
         return $this->isRunning($this->procRef);
     }
@@ -642,17 +638,16 @@ class MulticastTask extends FOGService
      */
     public function updateStats()
     {
-        $Tasks = self::getClass('TaskManager')
-            ->find(
-                array(
-                    'id' => self::getSubObjectIDs(
-                        'MulticastSessionsAssociation',
-                        array('msID' => $this->_intID),
-                        'taskID'
-                    )
-                )
-            );
-        foreach ($Tasks as &$Task) {
+        $find = array(
+            'id' => self::getSubObjectIDs(
+                'MulticastSessionsAssociation',
+                array('msID' => $this->_intID),
+                'taskID'
+            )
+        );
+        foreach ((array)self::getClass('TaskManager')
+            ->find($find) as &$Task
+        ) {
             $TaskPercent[] = $Task->get('percent');
             unset($Task);
         }

@@ -78,12 +78,9 @@ class FileIntegrity extends FOGController
     {
         $this->set('storagenode', self::getClass('StorageNode'));
         self::getIPAddress();
-        $StorageNodes = self::getClass('StorageNodeManager')
-            ->find(array('isEnabled' => 1));
-        foreach ($StorageNodes as &$StorageNode) {
-            if (!$StorageNode->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('StorageNodeManager')
+            ->find(array('isEnabled' => 1)) as &$StorageNode
+        ) {
             $ip = self::$FOGCore->resolveHostname($StorageNode->get('ip'));
             if (!in_array($ip, self::$ips)) {
                 continue;
@@ -143,7 +140,7 @@ class FileIntegrity extends FOGController
     private function _getModTime($item)
     {
         $stat = stat($item);
-        return $this->formatTime($stat['mtime'], 'Y-m-d H:i:s');
+        return self::formatTime($stat['mtime'], 'Y-m-d H:i:s');
     }
     /**
      * Gets image paths
@@ -189,7 +186,7 @@ class FileIntegrity extends FOGController
      */
     public function processPathFiles()
     {
-        $files = array_merge(
+        $files = self::fastmerge(
             (array)self::$imagePaths,
             (array)self::$snapinFiles
         );

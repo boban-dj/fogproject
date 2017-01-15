@@ -87,7 +87,7 @@ class TaskScheduler extends FOGService
     {
         try {
             $findWhere = array(
-                'stateID' => $this->getQueuedStates(),
+                'stateID' => self::getQueuedStates(),
                 'wol' => 1
             );
             $taskHostIDs = self::getSubObjectIDs(
@@ -105,7 +105,7 @@ class TaskScheduler extends FOGService
                     ),
                     'mac'
                 );
-                $hostMACs = $this->parseMacList($hostMACs);
+                $hostMACs = self::parseMacList($hostMACs);
                 $macCount = count($hostMACs);
                 if ($macCount > 0) {
                     self::outall(
@@ -161,7 +161,7 @@ class TaskScheduler extends FOGService
                         'onDemand' => array(0, '')
                     )
                 );
-            $Tasks = array_merge((array)$Tasks, (array)$PMs);
+            $Tasks = self::fastmerge((array)$Tasks, (array)$PMs);
             foreach ((array)$Tasks as &$Task) {
                 if (!$Task->isValid()) {
                     continue;
@@ -264,14 +264,7 @@ class TaskScheduler extends FOGService
      */
     public function serviceRun()
     {
-        self::out(
-            ' ',
-            static::$dev
-        );
-        $str = str_pad('+', 75, '-');
-        self::out($str, static::$dev);
         $this->_commonOutput();
-        self::out($str, static::$dev);
         parent::serviceRun();
     }
 }

@@ -19,7 +19,7 @@
  * @license  http://opensource.org/licenses/gpl-3.0 GPLv3
  * @link     https://fogproject.org
  */
-require WEBROOT.'/commons/init.php';
+require WEBROOT.'/commons/base.inc.php';
 $service_logpath = sprintf(
     '/%s/%s',
     trim(FOGCore::getSetting('SERVICE_LOG_PATH'), '/'),
@@ -44,11 +44,10 @@ $service_child_pid = 0;
  */
 function Service_Log_message($logpath, $name, $msg)
 {
-    global $FOGCore;
     $logfile = fopen($logpath, "a");
     $msg = sprintf(
         "[%s] %s %s\n",
-        $FOGCore->formatTime('now', 'm-d-y g:i:s a'),
+        FOGCore::formatTime('now', 'm-d-y g:i:s a'),
         $name,
         $msg
     );

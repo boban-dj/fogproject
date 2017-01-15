@@ -22,6 +22,12 @@
 class PrinterClient extends FOGClient implements FOGClientSend
 {
     /**
+     * Module associated shortname
+     *
+     * @var string
+     */
+    public $shortName = 'printermanager';
+    /**
      * The available modes
      * 0 = no management
      * a = FOG Managed only
@@ -83,13 +89,10 @@ class PrinterClient extends FOGClient implements FOGClientSend
         } else {
             $default = array_shift($defaultName);
         }
-        $Printers = self::getClass('PrinterManager')
-            ->find(array('id' => $printerIDs));
         $printers = array();
-        foreach ((array)$Printers as &$Printer) {
-            if (!$Printer->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('PrinterManager')
+            ->find(array('id' => $printerIDs)) as &$Printer
+        ) {
             $printers[] = array(
                 'type' => $Printer->get('config'),
                 'port' => $Printer->get('port'),
@@ -154,15 +157,12 @@ class PrinterClient extends FOGClient implements FOGClientSend
                 )
             );
         }
-        $Printers = self::getClass('PrinterManager')
-            ->find(array('id' => $printerIDs));
         $this->send = base64_encode(sprintf("#!mg=%s\n", self::$_modes[$level]));
         $this->send .= "\n";
         $strtosend = "%s|%s|%s|%s|%s|%s";
-        foreach ((array)$Printers as &$Printer) {
-            if (!$Printer->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('PrinterManager')
+            ->find(array('id' => $printerIDs)) as &$Printer
+        ) {
             $printerStr = $this->_getString($strtosend, $Printer);
             $printerStrEncoded = base64_encode($printerStr);
             $this->send .= sprintf(

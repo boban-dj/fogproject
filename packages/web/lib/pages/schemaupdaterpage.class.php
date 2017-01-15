@@ -152,50 +152,64 @@ class SchemaUpdaterPage extends FOGPage
                 null,
                 true
             );
+            $newSchema = self::getClass('Schema', 1);
             foreach ((array)$items as $version => &$updates) {
                 foreach ((array)$updates as &$update) {
+                    if (!$update) {
+                        continue;
+                    }
                     if (is_callable($update)) {
                         $result = $update();
                         if (is_string($result)) {
                             $errors[] = sprintf(
                                 '<p><b>%s %s:</b>'
-                                . ' %s</p><p><b>%s %s:</b>'
+                                . ' %s<br/><br/><b>%s %s:</b>'
                                 . ' <pre>%s</pre></p>'
                                 . '<p><b>%s:</b>'
                                 . ' <pre>%s</pre></p>',
                                 _('Update'),
                                 _('ID'),
-                                $version,
+                                $version + 1,
                                 _('Function'),
                                 _('Error'),
                                 $result,
                                 _('Function'),
                                 print_r($update, 1)
                             );
+                            unset($update);
+                            break 2;
                         }
-                    } elseif (false === self::$DB->query($update)) {
+                    } elseif (false !== self::$DB->query($update)->error) {
                         $errors[] = sprintf(
                             '<p><b>%s %s:</b>'
-                            . ' %s</p><p><b>%s %s:</b>'
+                            . ' %s<br/><br/><b>%s %s:</b>'
+                            . ' <pre>%s</pre></p>'
+                            . '<p><b>%s:</b>'
                             . ' <pre>%s</pre></p>'
                             . '<p><b>%s:</b>'
                             . ' <pre>%s</pre></p>',
                             _('Update'),
                             _('ID'),
-                            $version,
+                            $version + 1,
                             _('Database'),
                             _('Error'),
-                            self::$DB->sqlerror(),
+                            self::$DB->error,
+                            _('Variable contains'),
+                            print_r($this->schema[$version], 1),
                             _('Database SQL'),
                             $update
                         );
+                        unset($update);
+                        break 2;
+                    } else {
+                        $newSchema->set('version', $version + 1);
                     }
+                    unset($update);
                 }
             }
-            $newSchema = self::getClass('Schema', 1)
-                ->load()
-                ->set('version', ++$version);
-            if (!$newSchema->save()) {
+            if (!$newSchema->save()
+                || count($errors) > 0
+            ) {
                 $fatalerrmsg = '';
                 $fatalerrmsg = sprintf(
                     '<p>%s</p>',
@@ -232,7 +246,7 @@ class SchemaUpdaterPage extends FOGPage
             echo $text;
         } catch (Exception $e) {
             printf('<p>%s</p>', $e->getMessage());
-            exit(1);
+            http_response_code(404);
         }
     }
 }

@@ -22,15 +22,22 @@
 class UserCleaner extends FOGClient implements FOGClientSend
 {
     /**
+     * Module associated shortname
+     *
+     * @var string
+     */
+    public $shortName = 'usercleanup';
+    /**
      * Sends the data to the client
      *
      * @return void
      */
     public function send()
     {
-        $UserCleanups = self::getClass('UserCleanupManager')->find();
         $this->send = "#!start\n";
-        foreach ($UserCleanups as &$User) {
+        foreach ((array)self::getClass('UserCleanupManager')
+            ->find() as &$User
+        ) {
             $this->send .= sprintf(
                 "%s\n",
                 base64_encode($User->get('name'))

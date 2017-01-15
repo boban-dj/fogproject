@@ -135,22 +135,19 @@ class Task extends TaskType
             $this->set('checkInTime', $curTime->format('Y-m-d H:i:s'))->save();
         }
         $used = explode(',', self::getSetting('FOG_USED_TASKS'));
-        $Tasks = $this->getManager()->find(
-            array(
-                'stateID' => array_merge(
-                    (array)$this->getQueuedStates(),
-                    (array)$this->getProgressState()
-                ),
-                'typeID' => $used,
-                'storagegroupID' => $this->get('storagegroupID'),
-                'storagenodeID' => $this->get('storagenodeID')
-            )
+        $find = array(
+            'stateID' => self::fastmerge(
+                (array)self::getQueuedStates(),
+                (array)self::getProgressState()
+            ),
+            'typeID' => $used,
+            'storagegroupID' => $this->get('storagegroupID'),
+            'storagenodeID' => $this->get('storagenodeID')
         );
         $checkTime = self::getSetting('FOG_CHECKIN_TIMEOUT');
-        foreach ((array)$Tasks as &$Task) {
-            if (!$Task->isValid()) {
-                continue;
-            }
+        foreach ((array)$this->getManager()
+            ->find($find) as &$Task
+        ) {
             $TaskCheckinTime = self::niceDate($Task->get('checkInTime'));
             $timeOfLastCheckin = $curTime
                 ->getTimestamp() - $TaskCheckinTime
@@ -189,12 +186,12 @@ class Task extends TaskType
                     '',
                     array(
                         'complete' => self::niceDate()->format('Y-m-d H:i:s'),
-                        'stateID' => $this->getCancelledState()
+                        'stateID' => self::getCancelledState()
                     )
                 );
             $SnapinJob->set(
                 'stateID',
-                $this->getCancelledState()
+                self::getCancelledState()
             )->save();
         }
         if ($this->isMulticast()) {
@@ -211,12 +208,12 @@ class Task extends TaskType
                     '',
                     array(
                         'clients' => 0,
-                        'completetime' => $this->formatTime('now', 'Y-m-d H:i:s'),
-                        'stateID' => $this->getCancelledState()
+                        'completetime' => self::formatTime('now', 'Y-m-d H:i:s'),
+                        'stateID' => self::getCancelledState()
                     )
                 );
         }
-        $this->set('stateID', $this->getCancelledState())->save();
+        $this->set('stateID', self::getCancelledState())->save();
 
         return $this;
     }

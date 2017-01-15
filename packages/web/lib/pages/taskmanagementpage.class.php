@@ -149,7 +149,7 @@ class TaskManagementPage extends FOGPage
                 'details_taskforce' => $forcetask,
                 'id' => $Task->get('id'),
                 'name' => $Task->get('name'),
-                'time' => $this->formatTime(
+                'time' => self::formatTime(
                     $Task->get('createdTime'),
                     'Y-m-d H:i:s'
                 ),
@@ -214,15 +214,16 @@ class TaskManagementPage extends FOGPage
     {
         $this->title = 'Active Tasks';
         $this->data = array();
-        $Tasks = self::getClass('TaskManager')->find(
-            array(
-                'stateID' => array_merge(
-                    (array) $this->getQueuedStates(),
-                    (array) $this->getProgressState()
-                )
+        $find = array(
+            'stateID' => self::fastmerge(
+                (array) self::getQueuedStates(),
+                (array) self::getProgressState()
             )
         );
-        array_walk($Tasks, self::$returnData);
+        array_walk(
+            self::getClass('TaskManager')->find($find),
+            self::$returnData
+        );
         self::$HookManager
             ->processEvent(
                 'HOST_DATA',
@@ -271,7 +272,7 @@ class TaskManagementPage extends FOGPage
             _('Tasking'),
         );
         $this->templates = array(
-            '<a href="?node=host&sub=edit&id=${id}"/>${name}</a>'
+            '<a href="?node=host&sub=edit&id=${id}">${name}</a>'
             . '<br/><small>${mac}</small>',
             '<small>${imagename}</small>',
             sprintf(
@@ -295,11 +296,10 @@ class TaskManagementPage extends FOGPage
                 'class' => 'r filter-false'
             ),
         );
-        $Hosts = self::getClass('HostManager')->find();
-        foreach ((array)$Hosts as &$Host) {
-            if (!$Host->isValid()
-                || $Host->get('pending')
-            ) {
+        foreach ((array)self::getClass('HostManager')
+            ->find() as &$Host
+        ) {
+            if ($Host->get('pending')) {
                 continue;
             }
             $this->data[] = array(
@@ -357,7 +357,7 @@ class TaskManagementPage extends FOGPage
             _('Tasking'),
         );
         $this->templates = array(
-            '<a href="?node=group&sub=edit&id=${id}"/>${name}</a>',
+            '<a href="?node=group&sub=edit&id=${id}">${name}</a>',
             sprintf(
                 '%s %s %s',
                 $mc,
@@ -375,11 +375,9 @@ class TaskManagementPage extends FOGPage
                 'class' => 'r filter-false'
             ),
         );
-        $Groups = self::getClass('GroupManager')->find();
-        foreach ((array)$Groups as &$Group) {
-            if (!$Group->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('GroupManager')
+            ->find() as &$Group
+        ) {
             $this->data[] = array(
                 'id' => $Group->get('id'),
                 'name' => $Group->get('name'),
@@ -550,21 +548,19 @@ class TaskManagementPage extends FOGPage
             array(),
             array(),
         );
-        $TaskTypes = self::getClass('TaskTypeManager')->find(
-            array(
-                'access' => array(
-                    'both',
-                    $type
+        foreach ((array)self::getClass('TaskTypeManager')
+            ->find(
+                array(
+                    'access' => array(
+                        'both',
+                        $type
+                    ),
+                    'isAdvanced' => 1
                 ),
-                'isAdvanced' => 1
-            ),
-            'AND',
-            'id'
-        );
-        foreach ((array)$TaskTypes as &$TaskType) {
-            if (!$TaskType->isValid()) {
-                continue;
-            }
+                'AND',
+                'id'
+            ) as &$TaskType
+        ) {
             $this->data[] = array(
                 'id' => $id,
                 'type' => $TaskType->get('id'),
@@ -707,18 +703,15 @@ class TaskManagementPage extends FOGPage
                 'class' => 'c'
             )
         );
-        $MultiSessions = self::getClass('MulticastSessionsManager')->find(
-            array(
-                'stateID' => array_merge(
-                    (array) $this->getQueuedStates(),
-                    (array) $this->getProgressState()
-                )
+        $find = array(
+            'stateID' => self::fastmerge(
+                (array) self::getQueuedStates(),
+                (array) self::getProgressState()
             )
         );
-        foreach ((array)$MultiSessions as &$MulticastSession) {
-            if (!$MulticastSession->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('MulticastSessionsManager')
+            ->find($find) as &$MulticastSession
+        ) {
             $TaskState = $MulticastSession->getTaskState();
             if (!$TaskState->isValid()) {
                 continue;
@@ -734,7 +727,7 @@ class TaskManagementPage extends FOGPage
                     self::getClass('MulticastSessionsAssociationManager')
                     ->count(array('msID' => $MulticastSession->get('id')))
                 ),
-                'start_date' => $this->formatTime(
+                'start_date' => self::formatTime(
                     $MulticastSession->get('starttime'),
                     'Y-m-d H:i:s'
                 ),
@@ -833,19 +826,15 @@ class TaskManagementPage extends FOGPage
                 'width' => 40
             )
         );
-        $activestate = array_merge(
-            (array) $this->getQueuedStates(),
-            (array) $this->getProgressState()
+        $activestate = self::fastmerge(
+            (array) self::getQueuedStates(),
+            (array) self::getProgressState()
         );
-        $SnapinTasks = self::getClass('SnapinTaskManager')->find(
-            array(
-                'stateID' => $activestate
-            )
-        );
-        foreach ((array)$SnapinTasks as &$SnapinTask) {
-            if (!$SnapinTask->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('SnapinTaskManager')
+            ->find(
+                array('stateID' => $activestate)
+            ) as &$SnapinTask
+        ) {
             $Snapin = $SnapinTask->getSnapin();
             if (!$Snapin->isValid()) {
                 continue;
@@ -872,7 +861,7 @@ class TaskManagementPage extends FOGPage
                 'host_id' => $Host->get('id'),
                 'host_name' => $Host->get('name'),
                 'host_mac' => $Host->get('mac')->__toString(),
-                'startDate' => $this->formatTime(
+                'startDate' => self::formatTime(
                     $SnapinTask->get('checkin'),
                     'Y-m-d H:i:s'
                 ),
@@ -1021,11 +1010,9 @@ class TaskManagementPage extends FOGPage
                 'class' => 'c'
             ),
         );
-        $ScheduledTasks = self::getClass('ScheduledTaskManager')->find();
-        foreach ((array)$ScheduledTasks as &$ScheduledTask) {
-            if (!$ScheduledTask->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('ScheduledTaskManager')
+            ->find() as &$ScheduledTask
+        ) {
             $method = 'getHost';
             if ($ScheduledTask->isGroupBased()) {
                 $method = 'getGroup';

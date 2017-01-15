@@ -83,7 +83,7 @@ class SnapinTaskManager extends FOGManagerController
         /**
          * Get our cancelled state id
          */
-        $cancelled = $this->getCancelledState();
+        $cancelled = self::getCancelledState();
         /**
          * Get any snapin job IDs
          */
@@ -100,7 +100,7 @@ class SnapinTaskManager extends FOGManagerController
             '',
             array(
                 'stateID' => $cancelled,
-                'complete'=>$this->formatTime('', 'Y-m-d H:i:s')
+                'complete'=> self::formatTime('', 'Y-m-d H:i:s')
             )
         );
         /**
@@ -115,9 +115,9 @@ class SnapinTaskManager extends FOGManagerController
                 ->count(
                     array(
                         'jobID' => $jobID,
-                        'stateID' => array_merge(
-                            (array) $this->getQueuedStates(),
-                            (array) $this->getProgressState()
+                        'stateID' => self::fastmerge(
+                            (array) self::getQueuedStates(),
+                            (array) self::getProgressState()
                         )
                     )
                 );

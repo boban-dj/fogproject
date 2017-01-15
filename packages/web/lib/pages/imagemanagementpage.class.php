@@ -269,7 +269,7 @@ class ImageManagementPage extends FOGPage
              * @return double
              */
             $servSize = function (&$path, &$StorageNode) {
-                return (double)$this->getFTPByteSize(
+                return $this->getFTPByteSize(
                     $StorageNode,
                     sprintf(
                         '%s/%s',
@@ -288,12 +288,6 @@ class ImageManagementPage extends FOGPage
          * @return void
          */
         self::$returnData = function (&$Image) use ($SizeServer, &$servSize) {
-            /**
-             * If the image isn't valid return immediately.
-             */
-            if (!$Image->isValid()) {
-                return;
-            }
             /**
              * Stores the image on client size.
              */
@@ -342,8 +336,8 @@ class ImageManagementPage extends FOGPage
              * If the date is valid format in Y-m-d H:i:s
              * and if not set to no valid data.
              */
-            if ($this->validDate($date)) {
-                $date = $this->formatTime($date, 'Y-m-d H:i:s');
+            if (self::validDate($date)) {
+                $date = self::formatTime($date, 'Y-m-d H:i:s');
             } else {
                 $date = _('No valid data');
             }
@@ -641,32 +635,26 @@ class ImageManagementPage extends FOGPage
              * This will set it to be the primary master.
              */
             $Image->setPrimaryGroup($_REQUEST['storagegroup']);
-            self::$HookManager
-                ->processEvent(
-                    'IMAGE_ADD_SUCCESS',
-                    array(
-                        'Image' => &$Image
-                    )
-                );
-            $this->setMessage(_('Image created'));
-            $this->redirect(
-                sprintf(
-                    '?node=%s&sub=edit&id=%s',
-                    $this->node,
-                    $Image->get('id')
-                )
+            $hook = 'IMAGE_ADD_SUCCESS';
+            $msg = _('Image created');
+            $url = sprintf(
+                '?node=%s&sub=edit&id=%s',
+                $this->node,
+                $Image->get('id')
             );
         } catch (Exception $e) {
-            self::$HookManager
-                ->processEvent(
-                    'IMAGE_ADD_FAIL',
-                    array(
-                        'Image' => &$Image
-                    )
-                );
-            $this->setMessage($e->getMessage());
-            $this->redirect($this->formAction);
+            $hook = 'IMAGE_ADD_FAIL';
+            $msg = $e->getMessage();
+            $url = $this->formAction;
         }
+        self::$HookManager
+            ->processEvent(
+                $hook,
+                array('Image' => &$Image)
+            );
+        unset($Image);
+        $this->setMessage($msg);
+        $this->redirect($url);
     }
     /**
      * Edit this image
@@ -866,16 +854,13 @@ class ImageManagementPage extends FOGPage
             ),
             array(),
         );
-        $StorageGroups = self::getClass('StorageGroupManager')
+        foreach ((array)self::getClass('StorageGroupManager')
             ->find(
                 array(
                     'id' => $this->obj->get('storagegroupsnotinme')
                 )
-            );
-        foreach ((array)$StorageGroups as &$Group) {
-            if (!$Group->isValid()) {
-                continue;
-            }
+            ) as &$Group
+        ) {
             $this->data[] = array(
                 'storageGroup_id' => $Group->get('id'),
                 'storageGroup_name' => $Group->get('name'),
@@ -952,16 +937,13 @@ class ImageManagementPage extends FOGPage
             ),
             '${storageGroup_name}',
         );
-        $StorageGroups = self::getClass('StorageGroupManager')
+        foreach ((array)self::getClass('StorageGroupManager')
             ->find(
                 array(
                     'id' => $this->obj->get('storagegroups')
                 )
-            );
-        foreach ((array)$StorageGroups as &$Group) {
-            if (!$Group->isValid()) {
-                continue;
-            }
+            ) as &$Group
+        ) {
             $this->data[] = array(
                 'storageGroup_id' => $Group->get('id'),
                 'storageGroup_name' => $Group->get('name'),
@@ -1135,29 +1117,21 @@ class ImageManagementPage extends FOGPage
             }
             if (!$this->obj->save()) {
                 throw new Exception(
-                    _('Database update failed')
+                    _('Image update failed')
                 );
             }
-            self::$HookManager
-                ->processEvent(
-                    'IMAGE_UPDATE_SUCCESS',
-                    array(
-                        'Image' => &$this->obj
-                    )
-                );
-            $this->setMessage(
-                _('Image updated')
-            );
+            $hook = 'IMAGE_UPDATE_SUCCESS';
+            $msg = _('Image updated');
         } catch (Exception $e) {
-            self::$HookManager
-                ->processEvent(
-                    'IMAGE_UPDATE_FAIL',
-                    array(
-                        'Image' => &$this->obj
-                    )
-                );
-            $this->setMessage($e->getMessage());
+            $hook = 'IMAGE_UPDATE_FAIL';
+            $msg = $e->getMessage();
         }
+        self::$HookManager
+            ->processEvent(
+                $hook,
+                array('Image' => &$this->obj)
+            );
+        $this->setMessage($msg);
         $this->redirect($this->formAction);
     }
     /**
@@ -1260,19 +1234,15 @@ class ImageManagementPage extends FOGPage
                 _('Kill')
             ),
         );
-        $MCSessions = self::getClass('MulticastSessionsManager')
-            ->find(
-                array(
-                    'stateID' => array_merge(
-                        (array)$this->getQueuedStates(),
-                        (array)$this->getProgressState()
-                    )
-                )
-            );
-        foreach ((array)$MCSessions as &$MulticastSession) {
-            if (!$MulticastSession->isValid()) {
-                continue;
-            }
+        $find = array(
+            'stateID' => self::fastmerge(
+                self::getQueuedStates(),
+                (array) self::getProgressState()
+            )
+        );
+        foreach ((array)self::getClass('MulticastSessionsManager')
+            ->find($find) as &$MulticastSession
+        ) {
             $Image = $MulticastSession->getImage();
             if (!$Image->isValid()) {
                 continue;
@@ -1282,7 +1252,7 @@ class ImageManagementPage extends FOGPage
                 'mc_count' => $MulticastSession->get('sessclients'),
                 'image_name' => $Image->get('name'),
                 'os' => $Image->getOS()->get('name'),
-                'mc_start' => $this->formatTime(
+                'mc_start' => self::formatTime(
                     $MulticastSession->get('starttime'),
                     'Y-m-d H:i:s'
                 ),
@@ -1329,14 +1299,14 @@ class ImageManagementPage extends FOGPage
                 );
             }
             if (is_numeric($_REQUEST['timeout']) && $_REQUEST['timeout'] > 0) {
-                $this->setSetting('FOG_UDPCAST_MAXWAIT', $_REQUEST['timeout']);
+                self::setSetting('FOG_UDPCAST_MAXWAIT', $_REQUEST['timeout']);
             }
             $countmc = self::getClass('MulticastSessionsManager')
                 ->count(
                     array(
-                        'stateID' => array_merge(
-                            (array)$this->getQueuedStates(),
-                            (array)$this->getProgressState()
+                        'stateID' => self::fastmerge(
+                            (array)self::getQueuedStates(),
+                            (array)self::getProgressState()
                         )
                     )
                 );
@@ -1364,7 +1334,7 @@ class ImageManagementPage extends FOGPage
                 ->set('stateID', 0)
                 ->set('sessclients', $_REQUEST['count'])
                 ->set('isDD', $Image->get('imageTypeID'))
-                ->set('starttime', $this->formatTime('now', 'Y-m-d H:i:s'))
+                ->set('starttime', self::formatTime('now', 'Y-m-d H:i:s'))
                 ->set('interface', $StorageNode->get('interface'))
                 ->set('logpath', $Image->get('path'))
                 ->set('storagegroupID', $StorageNode->get('id'))
@@ -1376,7 +1346,7 @@ class ImageManagementPage extends FOGPage
             while ($randomnumber == $MulticastSession->get('port')) {
                 $randomnumber = mt_rand(24576, 32766)*2;
             }
-            $this->setSetting('FOG_UDPCAST_STARTINGPORT', $randomnumber);
+            self::setSetting('FOG_UDPCAST_STARTINGPORT', $randomnumber);
             $this->setMessage(
                 sprintf(
                     '%s<br/>%s %s %s',

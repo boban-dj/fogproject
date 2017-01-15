@@ -116,17 +116,41 @@ class User extends FOGController
      * @param string $password  the password to test
      * @param string $adminTest the admin test
      *
-     * @return object
+     * @return bool 
      */
     public function passwordValidate(
         $username,
         $password,
         $adminTest = false
     ) {
+        /**
+         * Test the username for funky characters and return
+         * immediately if found.
+         */
+        $test = preg_match(
+            '/(?=^.{3,40}$)^[\w][\w0-9]*[._-]?[\w0-9]*[.]?[\w0-9]+$/i',
+            $username
+        );
+        if (!$test) {
+            return false;
+        }
         $tmpUser = self::getClass('User')
             ->set('name', $username)
             ->load('name');
-        if (preg_match('#^[a-f0-9]{32}$#', $tmpUser->get('password'))
+        $typeIsValid = true;
+        $type = $tmpUser->get('type');
+        self::$HookManager
+            ->processEvent(
+                'USER_TYPE_VALID',
+                array(
+                    'type' => &$type,
+                    'typeIsValid' => &$typeIsValid
+                )
+            );
+        if (!$typeIsValid) {
+            return false;
+        }
+        if (preg_match('#^[a-f0-9]{32}$#i', $tmpUser->get('password'))
             && md5($password) === $tmpUser->get('password')
         ) {
             $tmpUser
@@ -148,18 +172,29 @@ class User extends FOGController
      * @param string $username the username
      * @param string $password the password
      *
-     * @return bool
+     * @return object
      */
     public function validatePw(
         $username,
         $password
     ) {
+        /**
+         * Test the username for funky characters and return
+         * immediately if found.
+         */
+        $test = preg_match(
+            '/(?=^.{3,40}$)^[\w][\w0-9]*[._-]?[\w0-9]*[.]?[\w0-9]+$/i',
+            $username
+        );
+        if (!$test) {
+            return new self(0);
+        }
         if ($this->passwordValidate($username, $password)) {
             $tmpUser = self::getClass('User')
                 ->set('name', $username)
                 ->load('name');
             if (preg_match(
-                '#^[a-f0-9]{32}$#',
+                '#^[a-f0-9]{32}$#i',
                 $tmpUser->get('password')
             ) && md5($password) === $tmpUser->get('password')
             ) {
@@ -175,8 +210,6 @@ class User extends FOGController
                 ->set('id', $tmpUser->get('id'))
                 ->set('name', $tmpUser->get('name'))
                 ->set('password', '', true)
-                ->set('type', $tmpUser->get('type'))
-                ->load()
                 ->set('type', $type);
             unset($tmpUser);
             if (!$this->_sessionID) {
@@ -199,6 +232,47 @@ class User extends FOGController
             );
             $this->_isLoggedIn();
         } else {
+            self::$HookManager
+                ->processEvent(
+                    'USER_LOGGING_IN',
+                    array(
+                        'username' => $username,
+                        'password' => $password
+                    )
+                );
+            if (self::$FOGUser->isValid()) {
+                $type = self::$FOGUser->get('type');
+                self::$HookManager
+                    ->processEvent(
+                        'USER_TYPE_HOOK',
+                        array('type' => &$type)
+                    );
+                $this
+                    ->set('id', self::$FOGUser->get('id'))
+                    ->set('name', self::$FOGUser->get('name'))
+                    ->set('password', '', true)
+                    ->set('type', $type);
+                if (!$this->_sessionID) {
+                    $this->_sessionID = session_id();
+                }
+                $this
+                    ->set('authUserAgent', $_SERVER['HTTP_USER_AGENT'])
+                    ->set('authIP', $_SERVER['REMOTE_ADDR'])
+                    ->set('authTime', time())
+                    ->set('authLastActivity', time())
+                    ->set('authID', $this->_sessionID);
+                $_SESSION['FOG_USER'] = $this->get('id');
+                $_SESSION['FOG_USERNAME'] = $this->get('name');
+                $this->log(
+                    sprintf(
+                        '%s %s.',
+                        $this->get('name'),
+                        _('user successfully logged in')
+                    )
+                );
+                $this->_isLoggedIn();
+                return $this;
+            }
             $this->log(
                 sprintf(
                     '%s %s.',
@@ -214,7 +288,7 @@ class User extends FOGController
             self::$HookManager->processEvent(
                 'LoginFail',
                 array(
-                    'username' => $username,
+                    'username' => &$username,
                     'password' => &$password
                 )
             );

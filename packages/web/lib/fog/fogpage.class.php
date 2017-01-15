@@ -262,14 +262,25 @@ abstract class FOGPage extends FOGBase
             return $this->{$sub}();
         }
         $this->childClass = ucfirst($this->node);
-        $ref = preg_match(
-            '#node=storage&sub=.*storageGroup#i',
-            self::$querystring
-        );
+        if ($node == 'storage') {
+            $ref = preg_match(
+                '#node=storage&sub=storageGroup#i',
+                $_SERVER['HTTP_REFERER']
+            );
+        }
+        if (!isset($ref) || !$ref) {
+            $ref = preg_match(
+                '#node=storage&sub=.*storageGroup#i',
+                self::$querystring
+            );
+        }
         if ($ref) {
             $this->childClass .= 'Group';
         } elseif ($node == 'storage') {
             $this->childClass = 'StorageNode';
+        }
+        if (strtolower($this->childClass) === 'storagenodegroup') {
+            $this->childClass = 'StorageGroup';
         }
         if (!empty($name)) {
             $this->name = $name;
@@ -469,7 +480,7 @@ abstract class FOGPage extends FOGBase
             );
             if ($sub != 'list') {
                 if ($_SESSION['DataReturn'] > 0) {
-                    $objCount = $this->getClass($manager)->count();
+                    $objCount = self::getClass($manager)->count();
                     if ($objCount > $_SESSION['DataReturn']) {
                         $this->redirect(
                             sprintf(
@@ -487,9 +498,7 @@ abstract class FOGPage extends FOGBase
                     'pending' => array(0, '')
                 );
             }
-            $Items = self::getClass($manager)->find($find);
-            array_walk($Items, static::$returnData);
-            unset($Items);
+            array_walk(self::getClass($manager)->find($find), static::$returnData);
             $event = sprintf(
                 '%s_DATA',
                 strtoupper($this->node)
@@ -802,7 +811,7 @@ abstract class FOGPage extends FOGBase
                     || (in_array($sub, $defaultScreens)
                     && in_array($node, self::$searchPages))
                 ) {
-                    if ($this->node != 'home') {
+                    if (!in_array($this->node, array('home', 'hwinfo'))) {
                         $this->setMessage(
                             sprintf(
                                 '%s %s%s found',
@@ -929,7 +938,7 @@ abstract class FOGPage extends FOGBase
             implode((array)$this->templates),
             $foundchanges
         );
-        $arrayReplace = array_merge(
+        $arrayReplace = self::fastmerge(
             $urlvars,
             (array)$data
         );
@@ -1064,14 +1073,11 @@ abstract class FOGPage extends FOGBase
             );
             if ($this->obj instanceof Host) {
                 ob_start();
-                $Snapins = self::getClass('SnapinManager')
+                foreach ((array)self::getClass('SnapinManager')
                     ->find(
                         array('id' => $this->obj->get('snapins'))
-                    );
-                foreach ((array)$Snapins as &$Snapin) {
-                    if (!$Snapin->isValid()) {
-                        continue;
-                    }
+                    ) as &$Snapin
+                ) {
                     printf(
                         '<option value="%d">%s - (%d)</option>',
                         $Snapin->get('id'),
@@ -1247,14 +1253,11 @@ abstract class FOGPage extends FOGBase
             );
         }
         if ($this->obj instanceof Group) {
-            $hostIDs = $this->obj->get('hosts');
-            $Hosts = self::getClass('HostManager')
-                ->find(array('id' => $hostIDs));
-            unset($hostIDs);
-            foreach ((array)$Hosts as $index => &$Host) {
-                if (!$Host->isValid()) {
-                    continue;
-                }
+            foreach ((array)self::getClass('HostManager')
+                ->find(
+                    array('id' => $this->obj->get('hosts'))
+                ) as &$Host
+            ) {
                 $imageID = $imageName = '';
                 if ($TaskType->isImagingTask()) {
                     $Image = $Host->getImage();
@@ -1482,9 +1485,6 @@ abstract class FOGPage extends FOGBase
                             . _('and cannot be captured')
                         );
                     }
-                    if ($TaskType->isDeploy()) {
-                        $this->obj->checkIfExist($TaskType->get('id'));
-                    }
                 } elseif ($this->obj instanceof Group) {
                     if ($TaskType->isCapture()) {
                         throw new Exception(
@@ -1505,46 +1505,20 @@ abstract class FOGPage extends FOGBase
                         array('id' => $this->obj->get('hosts')),
                         'imageID'
                     );
-                    $StorageGroupIDs = self::getSubObjectIDs(
-                        'ImageAssociation',
-                        array('imageID' => $imageIDs),
-                        'storagegroupID'
-                    );
-                    $StorageNodes = self::getClass('StorageNodeManager')
-                        ->find(
-                            array(
-                                'storagegroupID' => $StorageGroupIDs,
-                                'isEnabled' => 1
-                            )
-                        );
-                    $hasImageIDs = array();
-                    foreach ((array)$StorageNodes as &$StorageNode) {
-                        if (!$StorageNode->isValid()) {
-                            continue;
-                        }
-                        $hasImageIDs = array_merge(
-                            $hasImageIDs,
-                            $StorageNode->get('images')
-                        );
-                        unset($StorageNode);
-                    }
                     $orig_hosts = $this->get('hosts');
-                    $hasImageIDs = array_unique($hasImageIDs);
-                    $storageImageIDs = array_intersect($imageIDs, $hasImageIDs);
                     $hostIDs = self::getSubObjectIDs(
                         'Host',
                         array(
                             'id' => $this->obj->get('hosts'),
-                            'imageID' => $storageImageIDs
+                            'imageID' => $imageIDs
                         )
                     );
                     if (count($hostIDs) < 1) {
                         throw new Exception(
                             sprintf(
-                                '%s %s %s',
-                                _('Theres no image definitions'),
-                                _('available on any node for the'),
-                                _('hosts in this group')
+                                '%s/%s.',
+                                _('No valid hosts found and'),
+                                _('or no valid images specified')
                             )
                         );
                     }
@@ -1739,12 +1713,12 @@ abstract class FOGPage extends FOGBase
         $reqID = explode(',', $_REQUEST[$reqID]);
         $reqID = array_unique($reqID);
         $reqID = array_filter($reqID);
-        $Objects = self::getClass($this->childClass)
+        foreach ((array)self::getClass($this->childClass)
             ->getManager()
             ->find(
                 array('id' => $reqID)
-            );
-        foreach ((array)$Objects as &$Object) {
+            ) as &$Object
+        ) {
             if ($Object->get('protected')) {
                 continue;
             }
@@ -1765,8 +1739,7 @@ abstract class FOGPage extends FOGBase
             printf(
                 '<div class="confirm-message"><p>%s:</p>'
                 . '<div id="deleteDiv"></div>',
-                $this->title,
-                $this->formAction
+                $this->title
             );
             $this->render();
             printf(
@@ -1820,7 +1793,7 @@ abstract class FOGPage extends FOGBase
             array('removing' => &$_REQUEST['remitems'])
         );
         if ((int)$_REQUEST['storagegroup'] === 1) {
-            $this->childClass .= 'Group';
+            $this->childClass = 'StorageGroup';
         }
         self::getClass($this->childClass)
             ->getManager()
@@ -1888,16 +1861,17 @@ abstract class FOGPage extends FOGBase
                 );
             unset($TaskType);
         };
-        $TaskTypes = self::getClass('TaskTypeManager')
+        $find = array(
+            'access' => array('both', $this->node),
+            'isAdvanced' => 0
+        );
+        foreach ((array)self::getClass('TaskTypeManager')
             ->find(
-                array(
-                    'access' => array('both', $this->node),
-                    'isAdvanced' => 0
-                ),
+                $find,
                 'AND',
                 'id'
-            );
-        foreach ((array)$TaskTypes as &$TaskType) {
+            ) as &$TaskType
+        ) {
             $taskTypeIterator($TaskType);
             unset($TaskType);
         }
@@ -1939,16 +1913,17 @@ abstract class FOGPage extends FOGBase
             _('Advanced Actions')
         );
         unset($TaskTypes);
-        $TaskTypes = self::getClass('TaskTypeManager')
+        $find = array(
+            'access' => array('both', $this->node),
+            'isAdvanced' => 1
+        );
+        foreach ((array)self::getClass('TaskTypeManager')
             ->find(
-                array(
-                    'access' => array('both', $this->node),
-                    'isAdvanced' => 1
-                ),
+                $find,
                 'AND',
                 'id'
-            );
-        foreach ((array)$TaskTypes as &$TaskType) {
+            ) as &$TaskType
+        ) {
             $taskTypeIterator($TaskType);
             unset($TaskType);
         }
@@ -2048,6 +2023,7 @@ abstract class FOGPage extends FOGBase
         if ($this->obj->isValid()) {
             $ADOU = trim($this->obj->get('ADOU'));
             $ADOU = preg_replace('#;#', '', $ADOU);
+            $optFound = $ADOU;
         }
         if (count($OUs) > 1) {
             ob_start();
@@ -2344,7 +2320,7 @@ abstract class FOGPage extends FOGBase
                         '%s%s_%s',
                         $backuppath,
                         $destfile,
-                        $this->formatTime('', 'Ymd_His')
+                        self::formatTime('', 'Ymd_His')
                     );
                     list(
                         $tftpPass,
@@ -2578,7 +2554,7 @@ abstract class FOGPage extends FOGBase
     public function authorize()
     {
         try {
-            $Host = $this->getHostItem(true);
+            $Host = self::getHostItem(true);
             $data = array_values(
                 array_map(
                     'bin2hex',
@@ -2640,6 +2616,12 @@ abstract class FOGPage extends FOGBase
                 );
                 exit;
             }
+            if ($e->getMessage() == '#!ist') {
+                echo json_encode(
+                    array('error' => 'ist')
+                );
+                exit;
+            }
             echo  $e->getMessage();
         }
         exit;
@@ -2655,12 +2637,25 @@ abstract class FOGPage extends FOGBase
     public function requestClientInfo()
     {
         if (isset($_REQUEST['configure'])) {
-            $Services = self::getSubObjectIDs(
+            list(
+                $bannerimg,
+                $bannersha,
+                $checkin,
+                $maxsize,
+                $pcolor,
+                $coname,
+                $timeout,
+                $freboot
+            ) = self::getSubObjectIDs(
                 'Service',
                 array(
                     'name' => array(
+                        'FOG_CLIENT_BANNER_IMAGE',
+                        'FOG_CLIENT_BANNER_SHA',
                         'FOG_CLIENT_CHECKIN_TIME',
                         'FOG_CLIENT_MAXSIZE',
+                        'FOG_COMPANY_COLOR',
+                        'FOG_COMPANY_NAME',
                         'FOG_GRACE_TIMEOUT',
                         'FOG_TASK_FORCE_REBOOT'
                     )
@@ -2672,10 +2667,23 @@ abstract class FOGPage extends FOGBase
                 false,
                 ''
             );
-            $vals['sleep'] = $Services[0] + mt_rand(1, 91);
-            $vals['maxsize'] = $Services[1];
-            $vals['promptTime'] = $Services[2];
-            $vals['force'] = (bool)$Services[3];
+            $vals = array(
+                'sleep' => $checkin + mt_rand(1, 91),
+                'maxsize' => $maxsize,
+                'promptTime' => $timeout,
+                'force' => (bool)$freboot,
+                'bannerURL' => (
+                    $bannerimg ?
+                    sprintf(
+                        '/management/other/%s',
+                        $bannerimg
+                    ) :
+                    ''
+                ),
+                'bannerHash' => strtoupper($bannersha),
+                'color' => "#$pcolor",
+                'company' => $coname
+            );
             echo json_encode($vals);
             exit;
         }
@@ -2709,7 +2717,7 @@ abstract class FOGPage extends FOGBase
                 }
                 unset($key, $en);
             }
-            $this->Host = $this->getHostItem(
+            $this->Host = self::getHostItem(
                 true,
                 false,
                 false,
@@ -2753,7 +2761,7 @@ abstract class FOGPage extends FOGBase
                 }
                 $disabled = in_array(
                     $key,
-                    array_merge(
+                    self::fastmerge(
                         (array)$globalDisabled,
                         (array)$hostDisabled
                     )
@@ -2776,8 +2784,15 @@ abstract class FOGPage extends FOGBase
                 }
                 unset($key);
             }
-            $this->sendData(json_encode($array), true, $array);
-            //echo json_encode($array);
+            $this->sendData(
+                json_encode(
+                    $array,
+                    JSON_UNESCAPED_UNICODE
+                ),
+                true,
+                $array
+            );
+            //echo json_encode($array, JSON_UNESCAPED_UNICODE);
         } catch (Exception $e) {
             echo $e->getMessage();
         }
@@ -2979,8 +2994,7 @@ abstract class FOGPage extends FOGBase
             '%sManager',
             $this->childClass
         );
-        $items = self::getClass($manager)->search('', true);
-        array_walk($items, static::$returnData);
+        array_walk(self::getClass($manager)->search('', true), static::$returnData);
         $event = sprintf(
             '%s_DATA',
             strtoupper($this->node)
@@ -3256,7 +3270,7 @@ abstract class FOGPage extends FOGBase
      */
     public function wakeEmUp()
     {
-        $macs = $this->parseMacList($_REQUEST['mac']);
+        $macs = self::parseMacList($_REQUEST['mac']);
         if (count($macs) < 1) {
             return;
         }
@@ -3296,18 +3310,15 @@ abstract class FOGPage extends FOGBase
         );
         $report = self::getClass('ReportMaker');
         $this->arrayRemove('id', $this->databaseFields);
-        $objects = self::getClass($this->childClass)
+        foreach ((array)self::getClass($this->childClass)
             ->getManager()
-            ->find();
-        foreach ((array)$objects as $index => &$Item) {
-            if (!$Item->isValid()) {
-                continue;
-            }
+            ->find() as &$Item
+        ) {
             if ($Item instanceof Host) {
                 $macs = $maccolumn = array();
                 $macs[] = $Item->get('mac');
-                $macs = array_merge($macs, $Item->get('additionalMACs'));
-                $macs = $this->parseMacList($macs);
+                $macs = self::fastmerge($macs, $Item->get('additionalMACs'));
+                $macs = self::parseMacList($macs);
                 foreach ((array)$macs as &$mac) {
                     if (!$mac->isValid()) {
                         continue;
@@ -3506,7 +3517,7 @@ abstract class FOGPage extends FOGBase
                 try {
                     $dbkeys = array_keys($this->databaseFields);
                     if ($Item instanceof Host) {
-                        $macs = $this->parseMacList($data[0]);
+                        $macs = self::parseMacList($data[0]);
                         $Host = self::getClass('HostManager')
                             ->getHostByMacAddresses($macs);
                         if ($Host

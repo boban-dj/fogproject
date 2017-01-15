@@ -107,38 +107,16 @@ class FOGConfigurationPage extends FOGPage
             '<h1>%s</h1>',
             _('Kernel Versions')
         );
-        $Nodes = self::getClass('StorageNodeManager')
-            ->find(
-                array(
-                    'isEnabled' => 1
-                )
-            );
-        foreach ((array)$Nodes as &$StorageNode) {
-            if (!$StorageNode->isValid()) {
-                continue;
-            }
-            $curroot = trim(
-                trim(
-                    $StorageNode->get('webroot'),
-                    '/'
-                )
-            );
-            $webroot = sprintf(
-                '/%s',
-                (
-                    strlen($curroot) > 1 ?
-                    sprintf(
-                        '%s/',
-                        $curroot
-                    ) :
-                    ''
-                )
-            );
+        $find = array(
+            'isEnabled' => 1
+        );
+        foreach ((array)self::getClass('StorageNodeManager')
+            ->find($find) as &$StorageNode
+        ) {
             $url = filter_var(
                 sprintf(
-                    'http://%s%sstatus/kernelvers.php',
-                    $StorageNode->get('ip'),
-                    $webroot
+                    'http://%s/fog/status/kernelvers.php',
+                    $StorageNode->get('ip')
                 ),
                 FILTER_SANITIZE_URL
             );
@@ -195,7 +173,7 @@ class FOGConfigurationPage extends FOGPage
         $test = self::$FOGURLRequests->isAvailable($url);
         $test = array_shift($test);
         if (false === $test) {
-            echo _('Unable to contact server');
+            return print _('Unable to contact server');
         }
         $htmlData = self::$FOGURLRequests->process($url);
         echo $htmlData[0];
@@ -643,16 +621,9 @@ class FOGConfigurationPage extends FOGPage
             '${field}',
             '${input}',
         );
-        $Menus = self::getClass('PXEMenuOptionsManager')
-            ->find(
-                '',
-                '',
-                'id'
-            );
-        foreach ((array)$Menus as &$Menu) {
-            if (!$Menu->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('PXEMenuOptionsManager')
+            ->find('', '', 'id') as &$Menu
+        ) {
             $divTab = preg_replace(
                 '#[^\w\-]#',
                 '_',
@@ -1059,17 +1030,15 @@ class FOGConfigurationPage extends FOGPage
             . _('download the module and use it on the next ')
             . _('time the service is started.')
         );
-        $ClientUpdates = self::getClass('ClientUpdaterManager')->find();
-        foreach ((array)$ClientUpdates as &$ClientUpdate) {
-            if (!$ClientUpdate->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('ClientUpdaterManager')
+           ->find() as &$ClientUpdate
+        ) {
             $this->data[] = array(
-                'name'=>$ClientUpdate->get('name'),
-                'module'=>$ClientUpdate->get('md5'),
-                'type'=>$ClientUpdate->get('type'),
-                'client_id'=>$ClientUpdate->get('id'),
-                'id'=>$ClientUpdate->get('id'),
+                'name' => $ClientUpdate->get('name'),
+                'module' => $ClientUpdate->get('md5'),
+                'type' => $ClientUpdate->get('type'),
+                'client_id' => $ClientUpdate->get('id'),
+                'id' => $ClientUpdate->get('id'),
             );
             unset($ClientUpdate);
         }
@@ -1361,6 +1330,7 @@ class FOGConfigurationPage extends FOGPage
             'FOG_FTP_IMAGE_SIZE',
             'FOG_KERNEL_DEBUG',
             'FOG_ENFORCE_HOST_CHANGES',
+            'FOG_LOGIN_INFO_DISPLAY',
         );
         self::$HookManager
             ->processEvent(
@@ -1372,7 +1342,8 @@ class FOGConfigurationPage extends FOGPage
         $this->title = _('FOG System Settings');
         printf(
             '<p class="hostgroup">%s</p><form method='
-            . '"post" action="%s"><div id="tab-container-1">',
+            . '"post" action="%s" enctype="multipart/form-data">'
+            . '<div id="tab-container-1">',
             _('This section allows you to customize or alter ')
             . _('the way in which FOG operates. ')
             . _('Please be very careful changing any of ')
@@ -1395,8 +1366,9 @@ class FOGConfigurationPage extends FOGPage
             '${span}',
         );
         echo '<a href="#" class="trigger_expand"><h3>Expand All</h3></a>';
-        $ServiceCats = self::getClass('ServiceManager')->getSettingCats();
-        foreach ((array)$ServiceCats as &$ServiceCAT) {
+        foreach ((array)self::getClass('ServiceManager')
+            ->getSettingCats() as &$ServiceCAT
+        ) {
             $divTab = preg_replace(
                 '#[^\w\-]#',
                 '_',
@@ -1411,16 +1383,13 @@ class FOGConfigurationPage extends FOGPage
                 $ServiceCAT,
                 $divTab
             );
-            $Services = self::getClass('ServiceManager')
+            foreach ((array)self::getClass('ServiceManager')
                 ->find(
                     array('category' => $ServiceCAT),
                     'AND',
                     'id'
-                );
-            foreach ((array)$Services as &$Service) {
-                if (!$Service->isValid()) {
-                    continue;
-                }
+                ) as &$Service
+            ) {
                 switch ($Service->get('name')) {
                 case 'FOG_PIGZ_COMP':
                     $type = '<div id="pigz" style="width: 200px; top: 15px;">'
@@ -1634,9 +1603,41 @@ class FOGConfigurationPage extends FOGPage
                         )
                     );
                     break;
+                case 'FOG_COMPANY_TOS':
                 case 'FOG_AD_DEFAULT_OU':
                     $type = '<textarea rows="5" name="${service_id}">'
                         . '${service_value}</textarea>';
+                    break;
+                case 'FOG_CLIENT_BANNER_IMAGE':
+                    $set = trim($Service->get('value'));
+                    if (!$set) {
+                        $type = '<input type="file" name="${service_id}" '
+                            . 'class="newbanner"/>'
+                            . '<input type="hidden" value="" name="banner"/>';
+                    } else {
+                        $type = sprintf(
+                            '<label id="uploader" for="bannerimg">%s'
+                            . '<a href="#" id="bannerimg" identi='
+                            . '"${service_id}"> <i class='
+                            . '"fa fa-arrow-up noBorder"></i></a></label>'
+                            . '<input type="hidden" value="%s" name="banner"/>',
+                            basename($set),
+                            $Service->get('value')
+                        );
+                    }
+                    break;
+                case 'FOG_CLIENT_BANNER_SHA':
+                    $type = '<input readonly name="${service_id}" type='
+                        . '"text" value="'
+                        . $Service->get('value')
+                        . '"/>';
+                    break;
+                case 'FOG_COMPANY_COLOR':
+                    $type = '<input name="${service_id}" type='
+                        . '"text" maxlength="6" value="'
+                        . $Service->get('value')
+                        . '" '
+                        . 'class="jscolor {required:false} {refine:false}"/>';
                     break;
                 default:
                     $type = '<input id="${service_name}" type='
@@ -1747,12 +1748,12 @@ class FOGConfigurationPage extends FOGPage
             'MULTICASESLEEPTIME' => true,
             // FOG Quick Registration
             'FOG_QUICKREG_AUTOPOP' => $checkbox,
-            'FOG_QUICKREG_IMG_ID' => array_merge(
+            'FOG_QUICKREG_IMG_ID' => self::fastmerge(
                 (array)0,
                 self::getSubObjectIDs('Image')
             ),
             'FOG_QUICKREG_SYS_NUMBER' => true,
-            'FOG_QUICKREG_GROUP_ASSOC' => array_merge(
+            'FOG_QUICKREG_GROUP_ASSOC' => self::fastmerge(
                 (array)0,
                 self::getSubObjectIDs('Group')
             ),
@@ -1839,9 +1840,10 @@ class FOGConfigurationPage extends FOGPage
             'FOG_PROXY_IP' => true,
         );
         unset($findWhere, $setWhere);
-        $Services = self::getClass('ServiceManager')->find();
         $items = array();
-        foreach ((array)$Services as $index => &$Service) {
+        foreach ((array)self::getClass('ServiceManager')
+            ->find() as $index => &$Service
+        ) {
             $key = $Service->get('id');
             $val = trim($Service->get('value'));
             $name = trim($Service->get('name'));
@@ -1872,6 +1874,64 @@ class FOGConfigurationPage extends FOGPage
             case 'FOG_AD_DEFAULT_PASSWORD':
                 $set = $this->encryptpw($set);
                 break;
+            case 'FOG_CLIENT_BANNER_SHA':
+                continue 2;
+            case 'FOG_CLIENT_BANNER_IMAGE':
+                $Service
+                    ->set('value', $_REQUEST['banner'])
+                    ->save();
+                if (!$_REQUEST['banner']) {
+                    self::setSetting('FOG_CLIENT_BANNER_SHA', '');
+                }
+                if (!($_FILES[$key]['name']
+                    && file_exists($_FILES[$key]['tmp_name']))
+                ) {
+                    continue 2;
+                }
+                $set = preg_replace(
+                    '/[^-\w\.]+/',
+                    '_',
+                    trim(basename($_FILES[$key]['name']))
+                );
+                $src = sprintf(
+                    '%s/%s',
+                    dirname($_FILES[$key]['tmp_name']),
+                    basename($_FILES[$key]['tmp_name'])
+                );
+                list(
+                    $width,
+                    $height,
+                    $type,
+                    $attr
+                ) = getimagesize($src);
+                if ($width != 650) {
+                    $this->setMessage(
+                        _('Width must be 650 pixels.')
+                    );
+                    $this->redirect($this->formAction);
+                }
+                if ($height != 120) {
+                    $this->setMessage(
+                        _('Height must be 120 pixels.')
+                    );
+                    $this->redirect($this->formAction);
+                }
+                $dest = sprintf(
+                    '%s/management/other/%s',
+                    BASEPATH,
+                    $set
+                );
+                $hash = hash_file(
+                    'sha512',
+                    $src
+                );
+                if (!move_uploaded_file($src, $dest)) {
+                    self::setSetting('FOG_CLIENT_BANNER_SHA', '');
+                    $set = '';
+                } else {
+                    self::setSetting('FOG_CLIENT_BANNER_SHA', $hash);
+                }
+                break;
             default:
                 break;
             }
@@ -1899,12 +1959,9 @@ class FOGConfigurationPage extends FOGPage
      */
     public function logviewer()
     {
-        $StorageGroups = self::getClass('StorageGroupManager')
-            ->find();
-        foreach ((array)$StorageGroups as &$StorageGroup) {
-            if (!$StorageGroup->isValid()) {
-                continue;
-            }
+        foreach ((array)self::getClass('StorageGroupManager')
+            ->find() as &$StorageGroup
+        ) {
             if (!count($StorageGroup->get('enablednodes'))) {
                 continue;
             }
@@ -2059,7 +2116,7 @@ class FOGConfigurationPage extends FOGPage
                 $logtype = 'access';
                 array_map($logparse, (array)$apacheacclog);
                 foreach ((array)$imgtransferlogs as &$file) {
-                    $str = $this->stringBetween(
+                    $str = self::stringBetween(
                         $file,
                         'transfer.',
                         '.log'
@@ -2073,7 +2130,7 @@ class FOGConfigurationPage extends FOGPage
                     unset($file);
                 }
                 foreach ((array)$snptransferlogs as &$file) {
-                    $str = $this->stringBetween(
+                    $str = self::stringBetween(
                         $file,
                         'transfer.',
                         '.log'
