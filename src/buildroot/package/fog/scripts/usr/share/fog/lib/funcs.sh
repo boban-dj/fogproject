@@ -1440,7 +1440,9 @@ handleError() {
     echo "#                         An error has been detected!                        #"
     echo "#                                                                            #"
     echo "##############################################################################"
-    echo -e "$str"
+    echo -e "$str\n"
+    echo "Kernel variables and settings:"
+    cat /proc/cmdline | sed 's/ad.*=.* //g'
     #
     # expand the file systems in the restored partitions
     #

@@ -2570,20 +2570,14 @@ $this->schema[] = self::fastmerge(
         DATABASE_NAME,
         array(
             'hostAutoLogOut',
-            array(
-                'haloHostID',
-                'haloTime'
-            )
+            array('haloHostID')
         )
     ),
     $tmpSchema->dropDuplicateData(
         DATABASE_NAME,
         array(
             'hostMAC',
-            array(
-                'hmHostID',
-                'hmMAC'
-            )
+            array('hmMAC')
         )
     ),
     $tmpSchema->dropDuplicateData(
@@ -2631,10 +2625,7 @@ $this->schema[] = self::fastmerge(
         DATABASE_NAME,
         array(
             'nfsGroupMembers',
-            array(
-                'ngmMemberName',
-                'ngmGroupID'
-            )
+            array('ngmMemberName')
         )
     ),
     $tmpSchema->dropDuplicateData(
@@ -3600,4 +3591,36 @@ $this->schema[] = array(
     . "('FOG_LOGIN_INFO_DISPLAY', 'This setting defines if the login page"
     . " should or should not display fog version information. (Default is "
     . "on)','1','General Settings')"
+);
+// 246
+$this->schema[] = $tmpSchema->dropDuplicateData(
+    DATABASE_NAME,
+    array(
+        'hostMAC',
+        array('hmMAC')
+    )
+);
+// 247
+$this->schema[] = array(
+    "INSERT IGNORE INTO `globalSettings` "
+    . "(`settingKey`, `settingDesc`, `settingValue`, `settingCategory`) "
+    . "VALUES "
+    . "('IMAGEREPLICATORGLOBALENABLED','This setting defines if replication "
+    . "of images should occur (Default is enabled)',"
+    . "'1','FOG Linux Service Enabled'),"
+    . "('SNAPINREPLICATORGLOBALENABLED','This setting defines if replication "
+    . "of snapins should occur (Default is enabled)',"
+    . "'1','FOG Linux Service Enabled'),"
+    . "('SNAPINHASHGLOBALENABLED','This setting defines if hashing "
+    . "of snapins should occur (Default is enabled)',"
+    . "'1','FOG Linux Service Enabled'),"
+    . "('PINGHOSTGLOBALENABLED','This setting defines if ping hosts "
+    . "should occur (Default is enabled)',"
+    . "'1','FOG Linux Service Enabled'),"
+    . "('SCHEDULERGLOBALENABLED','This setting defines if scheduler "
+    . "service should occur (Default is enabled)',"
+    . "'1','FOG Linux Service Enabled'),"
+    . "('MULTICASTGLOBALENABLED','This setting defines if multicast "
+    . "service should occur (Default is enabled)',"
+    . "'1','FOG Linux Service Enabled')"
 );

@@ -544,7 +544,7 @@ getPartitionTableType() {
     status="$?"
     [[ ! $status -eq 0 ]] && runFixparts "$disk"
     local mbr=$(gdisk -l $disk | awk '/^\ *MBR:/{print $2}')
-    local gpt=$(gdisk -l $disk | awk '/^\ *GPT:/{print $5}')
+    local gpt=$(gdisk -l $disk | awk '/^\ *GPT:/{print $2}')
     local type=""
     local mbrtype=""
     local gpttype=""

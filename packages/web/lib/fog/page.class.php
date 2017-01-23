@@ -146,6 +146,7 @@ class Page extends FOGBase
             'dashboard',
             'schema',
             'client',
+            'ipxe',
             'login',
             'logout'
         );
@@ -268,7 +269,8 @@ class Page extends FOGBase
                     array(
                         'hwinfo',
                         'client',
-                        'schema'
+                        'schema',
+                        'ipxe'
                     )
                 );
             }
@@ -498,7 +500,12 @@ class Page extends FOGBase
                 self::$foglang['Slogan']
             );
         }
-        include '../management/other/index.php';
+        if (true === self::$showhtml) {
+            include '../management/other/index.php';
+        } else {
+            echo $this->body;
+            exit;
+        }
         foreach (array_keys(get_defined_vars()) as $var) {
             unset($$var);
         }

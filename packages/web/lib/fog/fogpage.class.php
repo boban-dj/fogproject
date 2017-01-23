@@ -463,6 +463,9 @@ abstract class FOGPage extends FOGBase
      */
     public function index()
     {
+        if (false === self::$showhtml) {
+            return;
+        }
         $this->title = _('Search');
         if (in_array($this->node, self::$searchPages)) {
             $this->searchFormURL = sprintf('?node=%s&sub=search', $this->node);
@@ -947,11 +950,12 @@ abstract class FOGPage extends FOGBase
                 '#\$\{%s\}#',
                 $name
             );
-            if (!empty($val)) {
-                $this->dataReplace[] = str_replace('\\', '\\\\', $val);
-            } else {
-                $this->dataReplace[] = '';
-            }
+            $val = trim($val);
+            $this->dataReplace[] = str_replace(
+                '\\',
+                '\\\\',
+                $val
+            );
             unset($val);
         }
     }
@@ -1059,7 +1063,7 @@ abstract class FOGPage extends FOGBase
         );
         printf(
             '<p class="c"><b>%s</b></p>',
-            _('Are you sure you wish to deploy task to these machines')
+            _('Are you sure you wish task these machines')
         );
         printf(
             '<form method="post" action="%s" id="deploy-container">',
@@ -1069,7 +1073,7 @@ abstract class FOGPage extends FOGBase
         if ($TaskType->get('id') == 13) {
             printf(
                 '<p class="c"><p>%s</p>',
-                _('Please select the snapin you want to deploy')
+                _('Please select the snapin you want to install')
             );
             if ($this->obj instanceof Host) {
                 ob_start();
@@ -1157,14 +1161,14 @@ abstract class FOGPage extends FOGBase
                 . 'for="scheduleInstant">%s <u>%s'
                 . '</u></label></p>',
                 _('Schedule'),
-                _('Instant Deployment')
+                _('Instant')
             );
             printf(
                 '<p><input type="radio" name="scheduleType" '
                 . 'id="scheduleSingle" value="single" autocomplete="off"/>'
                 . '<label for="scheduleSingle">%s <u>%s</u></label></p>',
                 _('Schedule'),
-                _('Delayed Deployment')
+                _('Delayed')
             );
             echo '<p class="hidden hideFromDebug" id="singleOptions">'
                 . '<input type="text" name="scheduleSingleTime" '
@@ -1174,7 +1178,7 @@ abstract class FOGPage extends FOGBase
                 . 'id="scheduleCron" value="cron" autocomplete="off">'
                 . '<label for="scheduleCron">%s <u>%s</u></label></p>',
                 _('Schedule'),
-                _('Cron-style Deployment')
+                _('Cron-style')
             );
             echo '<p class="hidden hideFromDebug" id="cronOptions">';
             $specialCrons = array(
@@ -1213,7 +1217,7 @@ abstract class FOGPage extends FOGBase
                 . 'value="instant" autocomplete="off" checked/><label '
                 . 'for="scheduleInstant">%s <u>%s</u></label></p>',
                 _('Schedule'),
-                _('Instant Deployment')
+                _('Instant')
             );
         }
         if ($TaskType->get('id') == 11) {
@@ -2691,6 +2695,10 @@ abstract class FOGPage extends FOGBase
         if (isset($_REQUEST['authorize'])) {
             $this->authorize(true);
         }
+        // Handles adding additional system macs for us.
+        ob_start();
+        self::getClass('RegisterClient')->json();
+        ob_end_clean();
         try {
             $igMods = array(
                 'dircleanup',
@@ -3087,45 +3095,39 @@ abstract class FOGPage extends FOGBase
             'Group' :
             'Host'
         );
-        $names = self::getSubObjectIDs(
-            $ClassCall,
-            array(
-                'id' => $this->obj->get(
-                    sprintf(
-                        '%ssnotinme',
-                        strtolower($ClassCall)
+        extract(
+            self::getSubObjectIDs(
+                $ClassCall,
+                array(
+                    'id' => $this->obj->get(
+                        sprintf(
+                            '%ssnotinme',
+                            strtolower($ClassCall)
+                        )
                     )
-                )
-            ),
-            'name'
-        );
-        $ids = self::getSubObjectIDs(
-            $ClassCall,
-            array(
-                'id' => $this->obj->get(
-                    sprintf(
-                        '%ssnotinme',
-                        strtolower($ClassCall)
-                    )
+                ),
+                array(
+                    'name',
+                    'id'
                 )
             )
         );
         $itemParser = function (
-            &$name,
+            &$nam,
             &$index
-        ) use (&$ids) {
+        ) use (&$id) {
             $this->data[] = array(
-                'host_id'=>$ids[$index],
-                'host_name'=>$name,
+                'host_id'=>$id[$index],
+                'host_name'=>$nam,
                 'check_num'=>1,
             );
             unset(
-                $name,
-                $ids[$index],
+                $nam,
+                $id[$index],
                 $index
             );
         };
-        array_walk($names, $itemParser);
+        array_walk($name, $itemParser);
         if (count($this->data) > 0) {
             self::$HookManager->processEvent(
                 sprintf(
@@ -3188,30 +3190,24 @@ abstract class FOGPage extends FOGBase
                 strtolower($ClassCall)
             ),
         );
-        $names = self::getSubObjectIDs(
-            $ClassCall,
-            array(
-                'id' => $this->obj->get(
-                    sprintf(
-                        '%ss',
-                        strtolower($ClassCall)
+        extract(
+            self::getSubObjectIDs(
+                $ClassCall,
+                array(
+                    'id' => $this->obj->get(
+                        sprintf(
+                            '%ss',
+                            strtolower($ClassCall)
+                        )
                     )
-                )
-            ),
-            'name'
-        );
-        $ids = self::getSubObjectIDs(
-            $ClassCall,
-            array(
-                'id' => $this->obj->get(
-                    sprintf(
-                        '%ss',
-                        strtolower($ClassCall)
-                    )
+                ),
+                array(
+                    'name',
+                    'id'
                 )
             )
         );
-        array_walk($names, $itemParser);
+        array_walk($name, $itemParser);
         self::$HookManager->processEvent(
             'OBJ_MEMBERSHIP',
             array(
@@ -3236,7 +3232,6 @@ abstract class FOGPage extends FOGBase
                 $this->node
             );
         }
-        session_start();
     }
     /**
      * Commonized membership actions
